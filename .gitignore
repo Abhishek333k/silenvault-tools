@@ -1,3 +1,6 @@
 # Ignore local D2 development files
 _D2_Workspace/
 assets/js/forge/
+
+# AI Agent workspace — never commit these
+.agent/

@@ -1,0 +1,1342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Subtitle Grabber | Download YouTube, Vimeo & Dailymotion Captions | SilenVault</title>
+    <meta name="description" content="Free client-side tool to download subtitles and captions from YouTube, Vimeo, and Dailymotion in SRT, VTT, TXT, and RAW formats. No account required.">
+    <meta name="keywords" content="subtitle downloader, youtube captions download, srt download, vtt subtitles, download youtube subtitles, vimeo captions, dailymotion subtitles">
+    <meta name="author" content="SilenVault">
+    <link rel="canonical" href="https://silenvault.com/tools/subtitle_grabber.html">
+
+    <meta property="og:title" content="Subtitle Grabber | SilenVault">
+    <meta property="og:description" content="Download captions from YouTube, Vimeo & Dailymotion in SRT, VTT, TXT formats — fully client-side.">
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://silenvault.com/tools/subtitle_grabber.html">
+    <meta property="og:site_name" content="SilenVault">
+
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5449371042798610" crossorigin="anonymous"></script>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="../assets/js/layout.js" defer></script>
+
+    <style>
+        /* UNIFIED SILENVAULT THEME */
+        :root {
+            --bg-color: #0f172a;
+            --panel-bg: rgba(30, 41, 59, 0.85);
+            --border-color: #334155;
+            --accent-glow: rgba(139, 92, 246, 0.25); /* Violet glow */
+            --primary-text: #f8fafc;
+            --secondary-text: #cbd5e1;
+        }
+
+        body { font-family: 'Inter', sans-serif; background-color: var(--bg-color); color: var(--primary-text); overflow-x: hidden; transition: background-color 0.8s ease; }
+        .glass-panel { background: var(--panel-bg); backdrop-filter: blur(16px); border: 1px solid var(--border-color); transition: all 0.5s ease; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
+        .mono { font-family: 'Fira Code', monospace; }
+
+        .skeleton {
+            background: linear-gradient(90deg, #1e293b 25%, #334155 50%, #1e293b 75%);
+            background-size: 200% 100%;
+            animation: loading 1.5s infinite;
+        }
+        @keyframes loading { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+        .badge { display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: 4px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; }
+        .badge-violet { background: rgba(139, 92, 246, 0.15); color: #c4b5fd; border: 1px solid rgba(139, 92, 246, 0.4); }
+        .badge-slate { background: rgba(100, 116, 139, 0.15); color: #cbd5e1; border: 1px solid rgba(100, 116, 139, 0.4); }
+        .badge-red { background: rgba(239, 68, 68, 0.15); color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.4); }
+        .badge-blue { background: rgba(59, 130, 246, 0.15); color: #93c5fd; border: 1px solid rgba(59, 130, 246, 0.4); }
+        .badge-amber { background: rgba(245, 158, 11, 0.15); color: #fcd34d; border: 1px solid rgba(245, 158, 11, 0.4); }
+
+        .format-btn.active {
+            background: #8b5cf6;
+            color: #fff;
+            border-color: #a78bfa;
+            box-shadow: 0 0 20px rgba(139, 92, 246, 0.35);
+        }
+
+        #previewBox {
+            max-height: 360px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .platform-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.25rem 0.65rem;
+            border-radius: 9999px;
+            font-size: 11px;
+            font-weight: 700;
+            border: 1px solid transparent;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <sv-header base-path=".."></sv-header>
+
+    <main class="flex-1 max-w-[1400px] mx-auto w-full px-4 py-8 flex flex-col gap-8 relative">
+
+        <div class="flex flex-col md:flex-row items-center justify-between gap-6">
+            <div>
+                <h1 class="text-3xl md:text-5xl font-extrabold text-white tracking-tight">
+                    Subtitle <span class="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-purple-400">Grabber</span>
+                </h1>
+                <p class="text-base text-slate-300 mt-2 font-medium">Download captions from YouTube, Vimeo, Dailymotion &amp; more in SRT, VTT, TXT formats.</p>
+                <div class="flex flex-wrap items-center gap-2 mt-4">
+                    <span class="platform-pill bg-red-500/10 text-red-300 border-red-500/30">YouTube</span>
+                    <span class="platform-pill bg-blue-500/10 text-blue-300 border-blue-500/30">Vimeo</span>
+                    <span class="platform-pill bg-amber-500/10 text-amber-300 border-amber-500/30">Dailymotion</span>
+                    <span class="platform-pill bg-slate-700/50 text-slate-400 border-slate-600">+ honest “not supported” for DRM platforms</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-8 items-start">
+
+            <div class="flex-1 w-full space-y-8">
+
+                <!-- INPUT -->
+                <div class="glass-panel rounded-2xl p-6 shadow-xl">
+                    <div class="flex flex-col md:flex-row gap-4">
+                        <div class="flex-1 relative">
+                            <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                                <svg class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z"/></svg>
+                            </div>
+
+                            <input type="text" id="videoUrl" placeholder="Paste YouTube, Vimeo, or Dailymotion URL..."
+                                   class="w-full bg-slate-900 border border-slate-700 text-white rounded-xl pl-12 pr-28 py-4 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all font-medium placeholder-slate-500"
+                                   oninput="onUrlInput()" onkeypress="handleEnter(event)">
+
+                            <div class="absolute inset-y-0 right-12 flex items-center pr-1">
+                                <span id="platformBadge" class="hidden text-[10px] font-extrabold uppercase tracking-wider px-2 py-1 rounded border"></span>
+                            </div>
+
+                            <button onclick="pasteFromClipboard()" class="absolute inset-y-0 right-2 my-auto h-10 w-10 flex items-center justify-center text-slate-400 hover:text-violet-400 hover:bg-slate-800 rounded-lg transition-colors" title="Paste from clipboard">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                            </button>
+                        </div>
+                        <button id="fetchBtn" onclick="fetchSubtitles()" class="bg-violet-600 hover:bg-violet-500 text-white font-bold px-8 py-4 rounded-xl transition-all shadow-[0_0_20px_rgba(139,92,246,0.25)] flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+                            <span id="fetchBtnLabel">Fetch Subtitles</span>
+                            <svg id="fetchBtnIcon" class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                        </button>
+                    </div>
+
+                    <div id="errorMsg" class="hidden mt-4 p-3 bg-rose-950/40 border border-rose-500/50 rounded-lg flex items-center gap-3">
+                        <svg class="w-5 h-5 text-rose-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <span id="errorText" class="text-rose-200 text-sm font-medium">Invalid URL detected.</span>
+                    </div>
+                </div>
+
+                <!-- LOADING -->
+                <div id="loadingArea" class="hidden glass-panel rounded-2xl p-6 space-y-4">
+                    <div class="flex items-center gap-3">
+                        <svg class="w-5 h-5 text-violet-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                        <span class="text-slate-300 font-medium" id="loadingText">Fetching caption tracks…</span>
+                    </div>
+                    <div class="h-3 rounded skeleton w-3/4"></div>
+                    <div class="h-3 rounded skeleton w-1/2"></div>
+                    <div class="h-24 rounded-xl skeleton"></div>
+                </div>
+
+                <!-- RESULTS -->
+                <div id="resultsArea" class="hidden space-y-6">
+
+                    <div class="glass-panel p-6 rounded-2xl border-violet-500/30 bg-violet-950/10">
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
+                            <div>
+                                <h3 class="text-xl font-bold text-white flex items-center gap-2 flex-wrap">
+                                    <span class="badge badge-violet" id="resultPlatformBadge">Tracks Found</span>
+                                    <span id="trackCountLabel" class="text-slate-300 text-base font-semibold">0 languages</span>
+                                </h3>
+                                <p class="text-xs text-slate-400 mt-1 mono" id="videoMetaLabel"></p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <label for="langSelect" class="text-xs font-bold uppercase tracking-wider text-slate-500">Language</label>
+                                <select id="langSelect" onchange="onLanguageChange()"
+                                        class="bg-slate-900 border border-slate-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 min-w-[180px]">
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center gap-2 mb-5" id="trackMeta">
+                            <!-- filled dynamically -->
+                        </div>
+
+                        <div class="flex flex-wrap gap-2 mb-5">
+                            <button type="button" class="format-btn active px-4 py-2.5 rounded-lg border border-slate-600 bg-slate-800/80 text-sm font-bold transition-all" data-format="srt" onclick="setFormat('srt')">SRT</button>
+                            <button type="button" class="format-btn px-4 py-2.5 rounded-lg border border-slate-600 bg-slate-800/80 text-sm font-bold transition-all hover:border-violet-500/50" data-format="vtt" onclick="setFormat('vtt')">VTT</button>
+                            <button type="button" class="format-btn px-4 py-2.5 rounded-lg border border-slate-600 bg-slate-800/80 text-sm font-bold transition-all hover:border-violet-500/50" data-format="txt" onclick="setFormat('txt')">TXT</button>
+                            <button type="button" class="format-btn px-4 py-2.5 rounded-lg border border-slate-600 bg-slate-800/80 text-sm font-bold transition-all hover:border-violet-500/50" data-format="raw" onclick="setFormat('raw')">RAW</button>
+                            <button type="button" id="downloadBtn" onclick="downloadCurrent()"
+                                    class="ml-auto bg-violet-600 hover:bg-violet-500 text-white font-bold px-5 py-2.5 rounded-lg transition-all shadow-[0_0_16px_rgba(139,92,246,0.3)] flex items-center gap-2 disabled:opacity-50">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>
+                                Download
+                            </button>
+                        </div>
+
+                        <div class="rounded-xl border border-slate-700 bg-slate-950/60 overflow-hidden">
+                            <div class="flex items-center justify-between px-4 py-2 border-b border-slate-800 bg-slate-900/80">
+                                <span class="text-[10px] uppercase tracking-widest text-slate-500 font-bold mono">Preview · <span id="previewFormatLabel">SRT</span></span>
+                                <button type="button" onclick="copyPreview()" class="text-xs text-slate-400 hover:text-violet-300 font-medium transition-colors">Copy</button>
+                            </div>
+                            <pre id="previewBox" class="p-4 text-sm text-slate-300 mono leading-relaxed"></pre>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SEO ARTICLE -->
+                <article class="mt-16 flex flex-col gap-12 border-t border-slate-800 pt-16">
+
+                    <section class="glass-panel p-8 md:p-10 rounded-2xl shadow-xl">
+                        <h2 class="text-2xl md:text-3xl font-extrabold text-white mb-8">How to Download Subtitles</h2>
+                        <div class="grid md:grid-cols-4 gap-6">
+                            <div class="flex flex-col gap-3">
+                                <span class="flex items-center justify-center w-10 h-10 rounded-full bg-slate-800 text-violet-400 font-bold font-mono text-lg border border-slate-700">1</span>
+                                <p class="text-sm text-slate-300 leading-relaxed"><strong>Copy the video URL</strong> from YouTube, Vimeo, or Dailymotion (watch page, share link, or embed).</p>
+                            </div>
+                            <div class="flex flex-col gap-3">
+                                <span class="flex items-center justify-center w-10 h-10 rounded-full bg-slate-800 text-violet-400 font-bold font-mono text-lg border border-slate-700">2</span>
+                                <p class="text-sm text-slate-300 leading-relaxed"><strong>Paste the link</strong> into the input above. The platform badge auto-detects the source.</p>
+                            </div>
+                            <div class="flex flex-col gap-3">
+                                <span class="flex items-center justify-center w-10 h-10 rounded-full bg-slate-800 text-violet-400 font-bold font-mono text-lg border border-slate-700">3</span>
+                                <p class="text-sm text-slate-300 leading-relaxed"><strong>Fetch captions.</strong> We query public caption endpoints via a CORS proxy and list every available track.</p>
+                            </div>
+                            <div class="flex flex-col gap-3">
+                                <span class="flex items-center justify-center w-10 h-10 rounded-full bg-slate-800 text-violet-400 font-bold font-mono text-lg border border-slate-700">4</span>
+                                <p class="text-sm text-slate-300 leading-relaxed"><strong>Pick language &amp; format</strong> (SRT, VTT, TXT, or RAW), preview, then download.</p>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="grid lg:grid-cols-2 gap-8">
+                        <div class="prose prose-invert prose-slate max-w-none glass-panel p-8 rounded-2xl shadow-lg">
+                            <h3 class="text-xl font-bold text-white mb-4">Platform Compatibility</h3>
+                            <p class="text-slate-400 text-sm leading-relaxed mb-4">This tool is fully client-side. Only platforms with public caption endpoints work without a backend.</p>
+                            <ul class="space-y-3 list-none pl-0 mt-4">
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-red-400 font-bold block mb-1 text-base">YouTube — Supported</strong>
+                                    <span class="text-slate-300 text-xs">Manual and auto-generated (ASR) tracks via the public timedtext / player response captions list.</span>
+                                </li>
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-blue-400 font-bold block mb-1 text-base">Vimeo — Supported</strong>
+                                    <span class="text-slate-300 text-xs">Text tracks from the public player config JSON when captions are enabled on the video.</span>
+                                </li>
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-amber-400 font-bold block mb-1 text-base">Dailymotion — Supported</strong>
+                                    <span class="text-slate-300 text-xs">Subtitle URLs from the public player metadata endpoint.</span>
+                                </li>
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-slate-400 font-bold block mb-1 text-base">Netflix, Disney+, Hotstar, etc. — Not Supported</strong>
+                                    <span class="text-slate-300 text-xs">DRM-protected streams and authenticated APIs cannot be accessed from a static browser page. We do not fake support.</span>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="glass-panel p-8 rounded-2xl shadow-lg bg-slate-900/60">
+                            <h3 class="text-xl font-bold text-white mb-4">Formats Explained</h3>
+                            <ul class="space-y-4 list-none pl-0">
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-violet-400 font-bold block mb-1 text-base">SRT (SubRip)</strong>
+                                    <span class="text-slate-300 text-xs">Most compatible subtitle format. Numbered cues with <span class="mono">HH:MM:SS,mmm</span> timestamps. Works in players, editors, and most caption tools.</span>
+                                </li>
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-violet-400 font-bold block mb-1 text-base">VTT (WebVTT)</strong>
+                                    <span class="text-slate-300 text-xs">Web standard used by HTML5 <span class="mono">&lt;track&gt;</span>. Timestamps use a dot decimal separator.</span>
+                                </li>
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-violet-400 font-bold block mb-1 text-base">TXT</strong>
+                                    <span class="text-slate-300 text-xs">Plain transcript with no timestamps — ideal for reading, search, or feeding into other tools.</span>
+                                </li>
+                                <li class="bg-slate-800/50 p-4 rounded-lg border border-slate-700">
+                                    <strong class="text-violet-400 font-bold block mb-1 text-base">RAW</strong>
+                                    <span class="text-slate-300 text-xs">Original payload from the platform (JSON / XML / VTT) before conversion.</span>
+                                </li>
+                            </ul>
+
+                            <h3 class="text-xl font-bold text-white mb-4 mt-8">FAQ</h3>
+                            <div class="space-y-5">
+                                <div>
+                                    <strong class="text-sm text-violet-400 block mb-1">Does this work for auto-generated YouTube captions?</strong>
+                                    <p class="text-sm text-slate-400 leading-relaxed">Yes. ASR tracks appear in the language list and are labeled as auto-generated when the platform exposes that flag.</p>
+                                </div>
+                                <div>
+                                    <strong class="text-sm text-violet-400 block mb-1">Why might fetch fail?</strong>
+                                    <p class="text-sm text-slate-400 leading-relaxed">Private/unlisted videos, region locks, missing captions, or a temporary CORS proxy outage can block retrieval. YouTube also tightened caption access (PO tokens on the web client); we use an Android-style player request and multi-proxy fallbacks when possible.</p>
+                                </div>
+                                <div>
+                                    <strong class="text-sm text-violet-400 block mb-1">Is anything uploaded to a server?</strong>
+                                    <p class="text-sm text-slate-400 leading-relaxed">No SilenVault backend stores your URL. Fetches go through a public CORS proxy solely so the browser can reach third-party caption endpoints.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </article>
+
+            </div>
+
+            <aside class="w-full lg:w-80 flex flex-col gap-6 shrink-0">
+                <div class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center min-h-[300px]">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-600 mb-2 font-bold">Sponsored</span>
+                    <ins class="adsbygoogle"
+                         style="display:block; width: 100%;"
+                         data-ad-client="ca-pub-5449371042798610"
+                         data-ad-slot="7594122081"
+                         data-ad-format="auto"
+                         data-full-width-responsive="true"></ins>
+                    <script>
+                         (adsbygoogle = window.adsbygoogle || []).push({});
+                    </script>
+                </div>
+
+                <div class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center min-h-[600px] sticky top-24">
+                    <span class="text-[10px] uppercase tracking-widest text-slate-600 mb-2 font-bold">Partner Content</span>
+                    <ins class="adsbygoogle"
+                         style="display:block; width: 100%; height: 100%;"
+                         data-ad-client="ca-pub-5449371042798610"
+                         data-ad-slot="9264203071"
+                         data-ad-format="auto"
+                         data-full-width-responsive="true"></ins>
+                    <script>
+                         (adsbygoogle = window.adsbygoogle || []).push({});
+                    </script>
+                </div>
+            </aside>
+
+        </div>
+    </main>
+
+    <sv-footer base-path=".."></sv-footer>
+
+    <script>
+        /* ============================================================
+           Subtitle Grabber — client-side multi-platform engine
+           YouTube: ANDROID innertube (no PO-token) + multi CORS proxy
+           Vimeo / Dailymotion: public metadata via CORS proxies
+           ============================================================ */
+
+        const YT_INNERTUBE_KEY = 'AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w';
+        const YT_ANDROID = { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 30, hl: 'en', gl: 'US' };
+
+        /** Proxy cascade — try direct first (YouTube timedtext often reflects ACAO), then public CORS proxies. */
+        const PROXY_LAYERS = [
+            {
+                name: 'direct',
+                fetch: async (url, opts = {}) => {
+                    const r = await fetch(url, { ...opts, signal: opts.signal });
+                    return r;
+                },
+                parseText: async (r) => r.text()
+            },
+            {
+                name: 'allorigins-get',
+                fetch: async (url) => fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`),
+                parseText: async (r) => {
+                    const j = await r.json();
+                    if (j.status && j.status.http_code && j.status.http_code >= 400) {
+                        throw new Error(`Upstream ${j.status.http_code}`);
+                    }
+                    return j.contents || '';
+                }
+            },
+            {
+                name: 'allorigins-raw',
+                fetch: async (url) => fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`),
+                parseText: async (r) => r.text()
+            },
+            {
+                name: 'codetabs',
+                fetch: async (url) => fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`),
+                parseText: async (r) => r.text()
+            }
+        ];
+
+        /** @type {{ platform: string, videoId: string, tracks: Array<{id:string,label:string,lang:string,kind:string,url:string,raw?:string,cues?:Array}> }} */
+        let session = null;
+        let currentFormat = 'srt';
+        let loadingTrack = false;
+
+        // ---------- UI helpers ----------
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') fetchSubtitles();
+        }
+
+        async function pasteFromClipboard() {
+            try {
+                const text = await navigator.clipboard.readText();
+                if (text) {
+                    document.getElementById('videoUrl').value = text;
+                    onUrlInput();
+                    fetchSubtitles();
+                }
+            } catch (err) {
+                console.error('Clipboard denied:', err);
+                alert('Clipboard access denied. Please paste manually.');
+            }
+        }
+
+        function showError(msg) {
+            const box = document.getElementById('errorMsg');
+            document.getElementById('errorText').textContent = msg;
+            box.classList.remove('hidden');
+        }
+
+        function clearError() {
+            document.getElementById('errorMsg').classList.add('hidden');
+        }
+
+        function setLoading(on, text) {
+            const area = document.getElementById('loadingArea');
+            const btn = document.getElementById('fetchBtn');
+            const label = document.getElementById('fetchBtnLabel');
+            if (on) {
+                area.classList.remove('hidden');
+                document.getElementById('resultsArea').classList.add('hidden');
+                if (text) document.getElementById('loadingText').textContent = text;
+                btn.disabled = true;
+                label.textContent = 'Fetching…';
+            } else {
+                area.classList.add('hidden');
+                btn.disabled = false;
+                label.textContent = 'Fetch Subtitles';
+            }
+        }
+
+        function onUrlInput() {
+            const url = document.getElementById('videoUrl').value.trim();
+            const badge = document.getElementById('platformBadge');
+            const detected = detectPlatform(url);
+            if (!url || !detected.platform) {
+                badge.classList.add('hidden');
+                return;
+            }
+            badge.classList.remove('hidden');
+            const map = {
+                youtube: { text: 'YouTube', cls: 'badge-red' },
+                vimeo: { text: 'Vimeo', cls: 'badge-blue' },
+                dailymotion: { text: 'Dailymotion', cls: 'badge-amber' },
+                unknown: { text: 'Unknown', cls: 'badge-slate' }
+            };
+            const m = map[detected.platform] || map.unknown;
+            badge.textContent = m.text;
+            badge.className = `text-[10px] font-extrabold uppercase tracking-wider px-2 py-1 rounded border ${m.cls}`;
+        }
+
+        // ---------- Platform detection ----------
+
+        function detectPlatform(url) {
+            if (!url) return { platform: null, id: null };
+            const yt = extractYouTubeId(url);
+            if (yt) return { platform: 'youtube', id: yt };
+            const vm = extractVimeoId(url);
+            if (vm) return { platform: 'vimeo', id: vm };
+            const dm = extractDailymotionId(url);
+            if (dm) return { platform: 'dailymotion', id: dm };
+            // Known unsupported domains for clearer errors
+            if (/netflix\.com|disneyplus\.com|hotstar\.com|hulu\.com|primevideo\.com|max\.com|crunchyroll\.com/i.test(url)) {
+                return { platform: 'unsupported', id: null };
+            }
+            return { platform: 'unknown', id: null };
+        }
+
+        function extractYouTubeId(url) {
+            const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/|youtube\.com\/shorts\/)([^"&?\/\s]{11})/i;
+            const match = url.match(regex);
+            return match ? match[1] : null;
+        }
+
+        function extractVimeoId(url) {
+            const m = url.match(/(?:vimeo\.com\/(?:video\/)?|player\.vimeo\.com\/video\/)(\d+)/i);
+            return m ? m[1] : null;
+        }
+
+        function extractDailymotionId(url) {
+            const m = url.match(/(?:dailymotion\.com\/(?:video|embed\/video)\/|dai\.ly\/)([a-zA-Z0-9]+)/i);
+            return m ? m[1] : null;
+        }
+
+        // ---------- CORS / multi-proxy fetch ----------
+
+        function isGarbagePayload(text) {
+            if (text == null) return true;
+            const t = String(text).trim();
+            if (!t) return true;
+            if (t.length < 20 && !t.includes('{') && !t.includes('<')) return true;
+            if (/error-522|error-520|Cloudflare/i.test(t) && t.includes('<!DOCTYPE')) return true;
+            if (/^Oops\.\.\. Request Timeout/i.test(t)) return true;
+            return false;
+        }
+
+        /**
+         * Fetch text through direct + proxy cascade.
+         * @param {string} targetUrl
+         * @param {{ acceptEmpty?: boolean, timeoutMs?: number, preferProxy?: boolean }} [options]
+         */
+        async function proxyFetchText(targetUrl, options = {}) {
+            const { acceptEmpty = false, timeoutMs = 25000, preferProxy = false } = options;
+            const layers = preferProxy
+                ? PROXY_LAYERS.filter(l => l.name !== 'direct').concat(PROXY_LAYERS.filter(l => l.name === 'direct'))
+                : PROXY_LAYERS;
+            const errors = [];
+
+            for (const layer of layers) {
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+                try {
+                    const res = await layer.fetch(targetUrl, { signal: ctrl.signal });
+                    if (!res.ok && layer.name === 'direct') {
+                        errors.push(`${layer.name}:${res.status}`);
+                        continue;
+                    }
+                    let text = await layer.parseText(res);
+                    // allorigins-get may double-encode
+                    if (typeof text !== 'string') text = String(text ?? '');
+                    if (!acceptEmpty && isGarbagePayload(text)) {
+                        errors.push(`${layer.name}:empty/garbage`);
+                        continue;
+                    }
+                    clearTimeout(timer);
+                    return text;
+                } catch (e) {
+                    errors.push(`${layer.name}:${e.message || e}`);
+                } finally {
+                    clearTimeout(timer);
+                }
+            }
+            throw new Error(`All fetch paths failed for resource. (${errors.slice(0, 4).join('; ')})`);
+        }
+
+        // ---------- Format converters ----------
+
+        function pad(n, w = 2) {
+            return String(n).padStart(w, '0');
+        }
+
+        function msToSrtTime(ms) {
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            const milli = Math.floor(ms % 1000);
+            return `${pad(h)}:${pad(m)}:${pad(s)},${pad(milli, 3)}`;
+        }
+
+        function msToVttTime(ms) {
+            const h = Math.floor(ms / 3600000);
+            const m = Math.floor((ms % 3600000) / 60000);
+            const s = Math.floor((ms % 60000) / 1000);
+            const milli = Math.floor(ms % 1000);
+            return `${pad(h)}:${pad(m)}:${pad(s)}.${pad(milli, 3)}`;
+        }
+
+        function parseVttTimestamp(ts) {
+            // 00:00:01.000 or 00:01.000
+            const parts = ts.trim().split(':');
+            let h = 0, m = 0, s = 0;
+            if (parts.length === 3) {
+                h = parseInt(parts[0], 10) || 0;
+                m = parseInt(parts[1], 10) || 0;
+                s = parseFloat(parts[2]) || 0;
+            } else if (parts.length === 2) {
+                m = parseInt(parts[0], 10) || 0;
+                s = parseFloat(parts[1]) || 0;
+            } else {
+                s = parseFloat(parts[0]) || 0;
+            }
+            return Math.round((h * 3600 + m * 60 + s) * 1000);
+        }
+
+        /** Normalize cues: [{startMs, endMs, text}] */
+        function cuesToSrt(cues) {
+            return cues.map((c, i) => {
+                return `${i + 1}\n${msToSrtTime(c.startMs)} --> ${msToSrtTime(c.endMs)}\n${c.text}\n`;
+            }).join('\n');
+        }
+
+        function cuesToVtt(cues) {
+            const body = cues.map(c => {
+                return `${msToVttTime(c.startMs)} --> ${msToVttTime(c.endMs)}\n${c.text}`;
+            }).join('\n\n');
+            return `WEBVTT\n\n${body}\n`;
+        }
+
+        function cuesToTxt(cues) {
+            return cues.map(c => c.text).filter(Boolean).join('\n');
+        }
+
+        function decodeHtmlEntities(str) {
+            const ta = document.createElement('textarea');
+            ta.innerHTML = str;
+            return ta.value;
+        }
+
+        function cleanCaptionText(raw) {
+            if (!raw) return '';
+            let t = raw
+                .replace(/<br\s*\/?>/gi, '\n')
+                .replace(/<\/?[^>]+>/g, '')
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
+            t = decodeHtmlEntities(t);
+            return t;
+        }
+
+        // YouTube json3 → cues
+        function parseYouTubeJson3(json) {
+            const events = json.events || [];
+            const cues = [];
+            for (const ev of events) {
+                if (!ev.segs || ev.tStartMs == null) continue;
+                const text = ev.segs.map(s => s.utf8 || '').join('').replace(/\n/g, ' ').trim();
+                if (!text || text === '\n') continue;
+                const startMs = ev.tStartMs;
+                const endMs = startMs + (ev.dDurationMs || 2000);
+                cues.push({ startMs, endMs, text: cleanCaptionText(text) });
+            }
+            return cues;
+        }
+
+        // YouTube srv3 / timedtext XML
+        function parseYouTubeXml(xmlText) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(xmlText, 'text/xml');
+            const texts = doc.querySelectorAll('text');
+            const cues = [];
+            texts.forEach(node => {
+                const start = parseFloat(node.getAttribute('start') || '0') * 1000;
+                const dur = parseFloat(node.getAttribute('dur') || '2') * 1000;
+                const text = cleanCaptionText(node.textContent || '');
+                if (text) cues.push({ startMs: Math.round(start), endMs: Math.round(start + dur), text });
+            });
+            // srv3 p/s nodes
+            if (!cues.length) {
+                const ps = doc.querySelectorAll('p');
+                ps.forEach(p => {
+                    const t = parseInt(p.getAttribute('t') || '0', 10);
+                    const d = parseInt(p.getAttribute('d') || '2000', 10);
+                    const text = cleanCaptionText(p.textContent || '');
+                    if (text) cues.push({ startMs: t, endMs: t + d, text });
+                });
+            }
+            return cues;
+        }
+
+        function parseWebVtt(vttText) {
+            const lines = vttText.replace(/\r\n/g, '\n').split('\n');
+            const cues = [];
+            let i = 0;
+            while (i < lines.length) {
+                const line = lines[i].trim();
+                if (line.includes('-->')) {
+                    const [startRaw, endRaw] = line.split('-->').map(s => s.trim().split(' ')[0]);
+                    const startMs = parseVttTimestamp(startRaw);
+                    const endMs = parseVttTimestamp(endRaw);
+                    i++;
+                    const textLines = [];
+                    while (i < lines.length && lines[i].trim() !== '') {
+                        textLines.push(lines[i]);
+                        i++;
+                    }
+                    const text = cleanCaptionText(textLines.join('\n'));
+                    if (text) cues.push({ startMs, endMs, text });
+                }
+                i++;
+            }
+            return cues;
+        }
+
+        function formatContent(track, format) {
+            if (!track) return '';
+            if (format === 'raw') return track.raw || '';
+            const cues = track.cues || [];
+            if (format === 'srt') return cuesToSrt(cues);
+            if (format === 'vtt') return cuesToVtt(cues);
+            if (format === 'txt') return cuesToTxt(cues);
+            return '';
+        }
+
+        // ---------- Platform fetchers ----------
+
+        /** Extract a balanced JSON object starting at first `{` after marker. */
+        function extractJsonAfterMarker(html, marker) {
+            const idx = html.indexOf(marker);
+            if (idx === -1) return null;
+            const start = html.indexOf('{', idx + marker.length);
+            if (start === -1) return null;
+            let depth = 0;
+            let inStr = false;
+            let esc = false;
+            for (let i = start; i < html.length; i++) {
+                const ch = html[i];
+                if (inStr) {
+                    if (esc) { esc = false; continue; }
+                    if (ch === '\\') { esc = true; continue; }
+                    if (ch === '"') inStr = false;
+                    continue;
+                }
+                if (ch === '"') { inStr = true; continue; }
+                if (ch === '{') depth++;
+                else if (ch === '}') {
+                    depth--;
+                    if (depth === 0) {
+                        try { return JSON.parse(html.slice(start, i + 1)); } catch (_) { return null; }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function extractCaptionTracksArray(html) {
+            const player =
+                extractJsonAfterMarker(html, 'ytInitialPlayerResponse') ||
+                extractJsonAfterMarker(html, 'var ytInitialPlayerResponse');
+            let tracksRaw =
+                player?.captions?.playerCaptionsTracklistRenderer?.captionTracks ||
+                player?.captions?.playerCaptionsRenderer?.captionTracks ||
+                null;
+            if (tracksRaw?.length) return tracksRaw;
+
+            const ctIdx = html.indexOf('"captionTracks"');
+            if (ctIdx === -1) return null;
+            const arrStart = html.indexOf('[', ctIdx);
+            if (arrStart === -1) return null;
+            let depth = 0, inStr = false, esc = false;
+            for (let i = arrStart; i < html.length; i++) {
+                const ch = html[i];
+                if (inStr) {
+                    if (esc) { esc = false; continue; }
+                    if (ch === '\\') { esc = true; continue; }
+                    if (ch === '"') inStr = false;
+                    continue;
+                }
+                if (ch === '"') { inStr = true; continue; }
+                if (ch === '[') depth++;
+                else if (ch === ']') {
+                    depth--;
+                    if (depth === 0) {
+                        try { return JSON.parse(html.slice(arrStart, i + 1)); } catch (_) { return null; }
+                    }
+                }
+            }
+            return null;
+        }
+
+        function mapYouTubeTracks(tracksRaw) {
+            return tracksRaw.map((t, idx) => {
+                let url = t.baseUrl || '';
+                // Prefer srv3 on ANDROID-signed URLs (works without PO token)
+                if (url && !/[?&]fmt=/.test(url)) {
+                    url += (url.includes('?') ? '&' : '?') + 'fmt=srv3';
+                }
+                return {
+                    id: `yt-${idx}-${t.languageCode || 'und'}`,
+                    label: (t.name && (t.name.simpleText || t.name.runs?.map(r => r.text).join(''))) || t.languageCode || `Track ${idx + 1}`,
+                    lang: t.languageCode || 'und',
+                    kind: t.kind === 'asr' ? 'asr' : 'manual',
+                    url,
+                    raw: null,
+                    cues: null,
+                    source: t._source || 'web'
+                };
+            });
+        }
+
+        /**
+         * ANDROID innertube player — returns caption baseUrls that work WITHOUT
+         * the WEB client's PO-token (pot) requirement. May be blocked by CORS
+         * when Origin is a third-party site; proxies are tried as fallback.
+         */
+        async function fetchYouTubeTracksAndroid(videoId) {
+            const endpoint = `https://www.youtube.com/youtubei/v1/player?key=${YT_INNERTUBE_KEY}&prettyPrint=false`;
+            const body = JSON.stringify({
+                context: { client: { ...YT_ANDROID } },
+                videoId,
+                contentCheckOk: true,
+                racyCheckOk: true
+            });
+
+            // text/plain avoids CORS preflight; YouTube still accepts JSON body.
+            // Note: browsers always send Origin; YT may 403 cross-origin.
+            try {
+                const res = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
+                    body
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    const tracks =
+                        data?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
+                    if (tracks.length) {
+                        return mapYouTubeTracks(tracks.map(t => ({ ...t, _source: 'android' })));
+                    }
+                }
+            } catch (e) {
+                console.warn('ANDROID player direct failed', e);
+            }
+
+            // POST via GET-proxy is not available; HTML scrape is the fallback.
+            return null;
+        }
+
+        async function fetchYouTubeTracksFromHtml(videoId) {
+            const watchUrls = [
+                `https://www.youtube.com/watch?v=${videoId}`,
+                `https://m.youtube.com/watch?v=${videoId}`,
+                `https://www.youtube.com/watch?v=${videoId}&hl=en&gl=US`
+            ];
+            let lastErr = null;
+            for (const watchUrl of watchUrls) {
+                try {
+                    const html = await proxyFetchText(watchUrl, { preferProxy: true, timeoutMs: 30000 });
+                    const tracksRaw = extractCaptionTracksArray(html);
+                    if (tracksRaw?.length) {
+                        return mapYouTubeTracks(tracksRaw.map(t => ({ ...t, _source: 'html' })));
+                    }
+                    lastErr = new Error('No captionTracks in page HTML');
+                } catch (e) {
+                    lastErr = e;
+                }
+            }
+            throw lastErr || new Error('Could not load YouTube page');
+        }
+
+        /** Invidious public instances (CORS-friendly when healthy). */
+        const INVIDIOUS_HOSTS = [
+            'https://inv.nadeko.net',
+            'https://invidious.privacyredirect.com',
+            'https://yt.artemislena.eu',
+            'https://invidious.protokolla.fi',
+            'https://iv.ggtyler.dev',
+            'https://invidious.materialio.us'
+        ];
+
+        async function fetchYouTubeTracksInvidious(videoId) {
+            for (const host of INVIDIOUS_HOSTS) {
+                try {
+                    const ctrl = new AbortController();
+                    const timer = setTimeout(() => ctrl.abort(), 8000);
+                    const res = await fetch(`${host}/api/v1/captions/${videoId}`, {
+                        signal: ctrl.signal,
+                        headers: { Accept: 'application/json' }
+                    });
+                    clearTimeout(timer);
+                    if (!res.ok) continue;
+                    const data = await res.json();
+                    const caps = data.captions || [];
+                    if (!caps.length) continue;
+                    return caps.map((c, idx) => ({
+                        id: `inv-${idx}-${c.languageCode || 'und'}`,
+                        label: c.label || c.languageCode || `Track ${idx + 1}`,
+                        lang: c.languageCode || 'und',
+                        kind: /auto/i.test(c.label || '') ? 'asr' : 'manual',
+                        url: (c.url && c.url.startsWith('http')) ? c.url : `${host}${c.url}`,
+                        raw: null,
+                        cues: null,
+                        source: 'invidious'
+                    }));
+                } catch (_) { /* try next host */ }
+            }
+            return null;
+        }
+
+        async function fetchYouTubeTracks(videoId) {
+            // 1) ANDROID innertube — signed timedtext without WEB PO-token
+            try {
+                const androidTracks = await fetchYouTubeTracksAndroid(videoId);
+                if (androidTracks?.length) return androidTracks;
+            } catch (e) {
+                console.warn('ANDROID tracks failed', e);
+            }
+
+            // 2) Invidious (CORS * when instance is healthy)
+            try {
+                const inv = await fetchYouTubeTracksInvidious(videoId);
+                if (inv?.length) return inv;
+            } catch (e) {
+                console.warn('Invidious tracks failed', e);
+            }
+
+            // 3) Scrape watch HTML (WEB baseUrls often need pot → empty body; still useful for listing)
+            const htmlTracks = await fetchYouTubeTracksFromHtml(videoId);
+            if (!htmlTracks?.length) {
+                throw new Error('No subtitles found for this YouTube video. Captions may be disabled or unavailable.');
+            }
+            return htmlTracks;
+        }
+
+        function parseCaptionPayload(text) {
+            if (!text || isGarbagePayload(text)) return { cues: [], raw: text || '' };
+            const raw = text;
+            if (text.trim().startsWith('{')) {
+                try {
+                    const json = JSON.parse(text);
+                    const cues = parseYouTubeJson3(json);
+                    if (cues.length) return { cues, raw };
+                } catch (_) { /* fall through */ }
+            }
+            if (text.includes('WEBVTT') || (text.includes('-->') && !text.includes('<timedtext'))) {
+                const cues = parseWebVtt(text);
+                if (cues.length) return { cues, raw };
+            }
+            const xmlCues = parseYouTubeXml(text);
+            if (xmlCues.length) return { cues: xmlCues, raw };
+            if (text.includes('-->')) {
+                const cues = parseSrtLike(text);
+                if (cues.length) return { cues, raw };
+            }
+            return { cues: [], raw };
+        }
+
+        async function loadYouTubeTrackContent(track) {
+            // Invidious returns VTT at the track URL
+            if (track.source === 'invidious') {
+                const text = await proxyFetchText(track.url, { timeoutMs: 15000 });
+                const parsed = parseCaptionPayload(text);
+                track.raw = parsed.raw;
+                track.cues = parsed.cues;
+                if (!track.cues.length && track.raw) {
+                    // empty VTT from some instances — keep raw for download
+                    return track;
+                }
+                if (!track.cues.length) {
+                    throw new Error('Invidious returned an empty caption body for this track.');
+                }
+                return track;
+            }
+
+            const base = track.url;
+            const candidates = [];
+            candidates.push(base);
+            if (!/[?&]fmt=json3/.test(base)) {
+                candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=json3');
+            }
+            if (!/[?&]fmt=srv3/.test(base)) {
+                candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=srv3');
+            }
+
+            let lastErr = null;
+            for (const url of candidates) {
+                try {
+                    // Direct first — YouTube timedtext often reflects Access-Control-Allow-Origin
+                    const text = await proxyFetchText(url, { timeoutMs: 20000 });
+                    const parsed = parseCaptionPayload(text);
+                    track.raw = parsed.raw;
+                    track.cues = parsed.cues;
+                    if (track.cues.length) return track;
+                    lastErr = new Error('Empty caption payload (YouTube may require a PO token for this WEB track)');
+                } catch (e) {
+                    lastErr = e;
+                }
+            }
+
+            // Refresh via ANDROID player (usable signatures without pot)
+            if (track.source !== 'android' && session?.videoId) {
+                try {
+                    const androidTracks = await fetchYouTubeTracksAndroid(session.videoId);
+                    const match = androidTracks?.find(t => t.lang === track.lang) || androidTracks?.[0];
+                    if (match?.url) {
+                        track.url = match.url;
+                        track.source = 'android';
+                        const text = await proxyFetchText(match.url, { timeoutMs: 20000 });
+                        const parsed = parseCaptionPayload(text);
+                        track.raw = parsed.raw;
+                        track.cues = parsed.cues;
+                        if (track.cues?.length) return track;
+                    }
+                } catch (e) {
+                    console.warn('ANDROID refresh failed', e);
+                }
+            }
+
+            // Invidious content fallback by language label
+            if (session?.videoId) {
+                try {
+                    const inv = await fetchYouTubeTracksInvidious(session.videoId);
+                    const match = inv?.find(t => t.lang === track.lang) || inv?.[0];
+                    if (match) {
+                        const text = await proxyFetchText(match.url, { timeoutMs: 15000 });
+                        const parsed = parseCaptionPayload(text);
+                        track.raw = parsed.raw;
+                        track.cues = parsed.cues;
+                        track.source = 'invidious';
+                        if (track.cues?.length) return track;
+                    }
+                } catch (e) {
+                    console.warn('Invidious content fallback failed', e);
+                }
+            }
+
+            throw lastErr || new Error('Failed to load YouTube caption track. YouTube may be blocking unsigned timedtext requests from the browser.');
+        }
+
+        async function fetchVimeoTracks(videoId) {
+            const configUrl = `https://player.vimeo.com/video/${videoId}/config`;
+            const text = await proxyFetchText(configUrl, { preferProxy: true, timeoutMs: 30000 });
+            let config;
+            try {
+                config = JSON.parse(text);
+            } catch {
+                throw new Error('Could not parse Vimeo player config. The video may be private or restricted.');
+            }
+            const textTracks = config?.request?.text_tracks || [];
+            if (!textTracks.length) {
+                throw new Error('No subtitles found for this Vimeo video.');
+            }
+            return textTracks.map((t, idx) => {
+                let url = t.url || '';
+                if (url.startsWith('/')) url = 'https://vimeo.com' + url;
+                return {
+                    id: `vm-${idx}-${t.lang || 'und'}`,
+                    label: t.label || t.lang || `Track ${idx + 1}`,
+                    lang: t.lang || 'und',
+                    kind: t.kind || 'manual',
+                    url,
+                    raw: null,
+                    cues: null
+                };
+            });
+        }
+
+        async function loadVimeoTrackContent(track) {
+            const text = await proxyFetchText(track.url, { preferProxy: true, timeoutMs: 25000 });
+            track.raw = text;
+            if (text.trim().startsWith('WEBVTT') || text.includes('-->')) {
+                track.cues = parseWebVtt(text);
+            } else {
+                // try JSON
+                try {
+                    const j = JSON.parse(text);
+                    if (Array.isArray(j)) {
+                        track.cues = j.map(c => ({
+                            startMs: Math.round((c.start || c.startTime || 0) * 1000),
+                            endMs: Math.round((c.end || c.endTime || 0) * 1000),
+                            text: cleanCaptionText(c.text || c.lines?.join('\n') || '')
+                        })).filter(c => c.text);
+                    } else {
+                        track.cues = [];
+                    }
+                } catch {
+                    track.cues = parseWebVtt(text);
+                }
+            }
+            return track;
+        }
+
+        async function fetchDailymotionTracks(videoId) {
+            const metaUrl = `https://www.dailymotion.com/player/metadata/video/${videoId}`;
+            const text = await proxyFetchText(metaUrl, { preferProxy: true, timeoutMs: 30000 });
+            let meta;
+            try {
+                meta = JSON.parse(text);
+            } catch {
+                throw new Error('Could not parse Dailymotion metadata. The video may be private or restricted.');
+            }
+            const subs = meta?.subtitles?.data || meta?.subtitles || {};
+            const entries = Array.isArray(subs)
+                ? subs
+                : Object.keys(subs).map(lang => ({ language: lang, ...(typeof subs[lang] === 'object' ? subs[lang] : { urls: [subs[lang]] }) }));
+
+            const tracks = [];
+            entries.forEach((entry, idx) => {
+                const lang = entry.language || entry.lang || entry.label || `lang-${idx}`;
+                const urls = entry.urls || entry.url || [];
+                const urlList = Array.isArray(urls) ? urls : [urls];
+                // Prefer vtt
+                const preferred = urlList.find(u => /\.vtt/i.test(u)) || urlList[0];
+                if (!preferred) return;
+                tracks.push({
+                    id: `dm-${idx}-${lang}`,
+                    label: entry.label || lang,
+                    lang,
+                    kind: 'manual',
+                    url: preferred,
+                    raw: null,
+                    cues: null
+                });
+            });
+
+            // Alternate shape: subtitles.enable + subtitles.data as map of lang → {urls:[]}
+            if (!tracks.length && meta?.subtitles?.data && typeof meta.subtitles.data === 'object' && !Array.isArray(meta.subtitles.data)) {
+                Object.entries(meta.subtitles.data).forEach(([lang, val], idx) => {
+                    const urlList = val?.urls || (val?.url ? [val.url] : []);
+                    const preferred = (urlList || []).find(u => /\.vtt/i.test(u)) || urlList[0];
+                    if (!preferred) return;
+                    tracks.push({
+                        id: `dm-${idx}-${lang}`,
+                        label: val.label || lang,
+                        lang,
+                        kind: 'manual',
+                        url: preferred,
+                        raw: null,
+                        cues: null
+                    });
+                });
+            }
+
+            if (!tracks.length) {
+                throw new Error('No subtitles found for this Dailymotion video.');
+            }
+            return tracks;
+        }
+
+        async function loadDailymotionTrackContent(track) {
+            const text = await proxyFetchText(track.url, { preferProxy: true, timeoutMs: 25000 });
+            track.raw = text;
+            track.cues = parseWebVtt(text);
+            if (!track.cues.length) {
+                // SRT-ish fallback
+                track.cues = parseSrtLike(text);
+            }
+            return track;
+        }
+
+        function parseSrtLike(text) {
+            const blocks = text.replace(/\r\n/g, '\n').split(/\n\n+/);
+            const cues = [];
+            for (const block of blocks) {
+                const lines = block.split('\n').filter(Boolean);
+                if (lines.length < 2) continue;
+                let timeLine = lines[0];
+                let textStart = 1;
+                if (!timeLine.includes('-->') && lines[1] && lines[1].includes('-->')) {
+                    timeLine = lines[1];
+                    textStart = 2;
+                }
+                if (!timeLine.includes('-->')) continue;
+                const [a, b] = timeLine.split('-->').map(s => s.trim().split(' ')[0].replace(',', '.'));
+                const startMs = parseVttTimestamp(a);
+                const endMs = parseVttTimestamp(b);
+                const body = cleanCaptionText(lines.slice(textStart).join('\n'));
+                if (body) cues.push({ startMs, endMs, text: body });
+            }
+            return cues;
+        }
+
+        // ---------- Main flow ----------
+
+        async function fetchSubtitles() {
+            clearError();
+            const url = document.getElementById('videoUrl').value.trim();
+            if (!url) {
+                showError('Please paste a video URL first.');
+                return;
+            }
+
+            const detected = detectPlatform(url);
+            if (detected.platform === 'unsupported') {
+                showError('This platform uses DRM-protected streams and cannot be accessed client-side. Supported: YouTube, Vimeo, Dailymotion.');
+                document.getElementById('resultsArea').classList.add('hidden');
+                return;
+            }
+            if (detected.platform === 'unknown' || !detected.id) {
+                showError('Unrecognized or unsupported URL. Paste a YouTube, Vimeo, or Dailymotion link.');
+                document.getElementById('resultsArea').classList.add('hidden');
+                return;
+            }
+
+            setLoading(true, `Contacting ${detected.platform}…`);
+            session = null;
+
+            try {
+                let tracks = [];
+                if (detected.platform === 'youtube') {
+                    tracks = await fetchYouTubeTracks(detected.id);
+                } else if (detected.platform === 'vimeo') {
+                    tracks = await fetchVimeoTracks(detected.id);
+                } else if (detected.platform === 'dailymotion') {
+                    tracks = await fetchDailymotionTracks(detected.id);
+                }
+
+                session = {
+                    platform: detected.platform,
+                    videoId: detected.id,
+                    tracks
+                };
+
+                setLoading(false);
+                renderResults();
+                // Auto-load first track
+                await ensureTrackLoaded(0);
+                updatePreview();
+            } catch (err) {
+                console.error(err);
+                setLoading(false);
+                showError(err.message || 'Failed to fetch subtitles. The proxy or platform may be unavailable.');
+            }
+        }
+
+        function renderResults() {
+            if (!session) return;
+            const area = document.getElementById('resultsArea');
+            area.classList.remove('hidden');
+
+            const platformLabels = { youtube: 'YouTube', vimeo: 'Vimeo', dailymotion: 'Dailymotion' };
+            document.getElementById('resultPlatformBadge').textContent = platformLabels[session.platform] || session.platform;
+            document.getElementById('trackCountLabel').textContent =
+                `${session.tracks.length} language${session.tracks.length === 1 ? '' : 's'}`;
+            document.getElementById('videoMetaLabel').textContent = `ID: ${session.videoId}`;
+
+            const select = document.getElementById('langSelect');
+            select.innerHTML = session.tracks.map((t, i) => {
+                const asr = t.kind === 'asr' ? ' (auto)' : '';
+                return `<option value="${i}">${escapeHtml(t.label)}${asr}</option>`;
+            }).join('');
+
+            updateTrackMeta(0);
+        }
+
+        function updateTrackMeta(index) {
+            const track = session?.tracks[index];
+            const el = document.getElementById('trackMeta');
+            if (!track) { el.innerHTML = ''; return; }
+            const kindBadge = track.kind === 'asr'
+                ? '<span class="badge badge-amber">Auto-generated</span>'
+                : '<span class="badge badge-violet">Manual</span>';
+            el.innerHTML = `
+                ${kindBadge}
+                <span class="badge badge-slate mono">${escapeHtml(track.lang)}</span>
+                <span class="text-xs text-slate-500">Select format and download</span>
+            `;
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        async function ensureTrackLoaded(index) {
+            if (!session || !session.tracks[index]) return;
+            const track = session.tracks[index];
+            if (track.cues) return track;
+
+            loadingTrack = true;
+            document.getElementById('previewBox').textContent = 'Loading track content…';
+            document.getElementById('downloadBtn').disabled = true;
+
+            try {
+                if (session.platform === 'youtube') {
+                    await loadYouTubeTrackContent(track);
+                } else if (session.platform === 'vimeo') {
+                    await loadVimeoTrackContent(track);
+                } else if (session.platform === 'dailymotion') {
+                    await loadDailymotionTrackContent(track);
+                }
+                if (!track.cues || !track.cues.length) {
+                    if (!track.raw) throw new Error('Empty caption payload.');
+                    // Allow RAW download even if cue parse failed
+                    track.cues = track.cues || [];
+                }
+            } catch (e) {
+                console.error(e);
+                showError(e.message || 'Failed to load caption track.');
+                track.cues = [];
+                track.raw = track.raw || '';
+            } finally {
+                loadingTrack = false;
+                document.getElementById('downloadBtn').disabled = false;
+            }
+            return track;
+        }
+
+        async function onLanguageChange() {
+            clearError();
+            const idx = parseInt(document.getElementById('langSelect').value, 10) || 0;
+            updateTrackMeta(idx);
+            await ensureTrackLoaded(idx);
+            updatePreview();
+        }
+
+        function setFormat(fmt) {
+            currentFormat = fmt;
+            document.querySelectorAll('.format-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.format === fmt);
+            });
+            document.getElementById('previewFormatLabel').textContent = fmt.toUpperCase();
+            updatePreview();
+        }
+
+        function getSelectedTrack() {
+            if (!session) return null;
+            const idx = parseInt(document.getElementById('langSelect').value, 10) || 0;
+            return session.tracks[idx] || null;
+        }
+
+        function updatePreview() {
+            const track = getSelectedTrack();
+            const box = document.getElementById('previewBox');
+            if (!track) {
+                box.textContent = '';
+                return;
+            }
+            if (loadingTrack && !track.cues) {
+                box.textContent = 'Loading track content…';
+                return;
+            }
+            const content = formatContent(track, currentFormat);
+            if (!content && currentFormat !== 'raw') {
+                box.textContent = track.raw
+                    ? '(Could not parse timed cues — try RAW format or another track.)'
+                    : '(No caption text for this track.)';
+                return;
+            }
+            // Cap preview length for performance
+            const max = 12000;
+            box.textContent = content.length > max ? content.slice(0, max) + '\n\n… [preview truncated]' : content;
+        }
+
+        function downloadCurrent() {
+            const track = getSelectedTrack();
+            if (!track || !session) return;
+            const content = formatContent(track, currentFormat);
+            if (!content) {
+                showError('Nothing to download for this format/track.');
+                return;
+            }
+            const ext = currentFormat === 'raw'
+                ? (track.raw && track.raw.trim().startsWith('{') ? 'json' : (track.raw && track.raw.includes('WEBVTT') ? 'vtt' : 'txt'))
+                : currentFormat;
+            const lang = (track.lang || 'und').replace(/[^\w-]/g, '_');
+            const filename = `subtitles_${session.platform}_${session.videoId}_${lang}.${ext}`;
+            const mime = currentFormat === 'srt' ? 'application/x-subrip'
+                : currentFormat === 'vtt' ? 'text/vtt'
+                : 'text/plain';
+            const blob = new Blob([content], { type: mime + ';charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            URL.revokeObjectURL(a.href);
+            a.remove();
+        }
+
+        async function copyPreview() {
+            const track = getSelectedTrack();
+            if (!track) return;
+            const content = formatContent(track, currentFormat);
+            try {
+                await navigator.clipboard.writeText(content);
+            } catch {
+                // Fallback
+                const ta = document.createElement('textarea');
+                ta.value = content;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+            }
+        }
+    </script>
+</body>
+</html>

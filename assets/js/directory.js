@@ -208,6 +208,14 @@ const silenVaultTools = [
         iconPath: `<path d="M19.615 3.184c-3.604-.246-11.631-.245-15.23 0-3.897.266-4.356 2.62-4.385 8.816.029 6.185.484 8.549 4.385 8.816 3.6.245 11.626.246 15.23 0 3.897-.266 4.356-2.62 4.385-8.816-.029-6.185-.484-8.549-4.385-8.816zm-10.615 12.816v-8l8 3.993-8 4.007z"/>`
     },
     {
+        category: "creator", id: "subtitle_grabber",
+        title: "Subtitle Grabber",
+        desc: "Download captions & subtitles from YouTube, Vimeo, Dailymotion in SRT, VTT & TXT formats.",
+        link: "tools/subtitle_grabber", tag: "NEW",
+        iconColors: "bg-violet-500/10 text-violet-400 border border-violet-500/20 group-hover:bg-violet-400 group-hover:text-[#020617] group-hover:border-transparent transition-all",
+        iconPath: `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 8h10M7 12h4m1 8l-4-4H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-3l-4 4z" />`
+    },
+    {
         category: "creator", id: "speech_engine",
         title: "Speech & Text Engine", 
         desc: "Local browser-based speech synthesis and dictation with zero cloud dependencies.",
