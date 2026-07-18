@@ -1,12 +1,14 @@
-# SilenVault Subtitle Proxy
+# SilenVault Subtitle Proxy (site infrastructure)
 
-Tiny Cloudflare Worker that runs YouTube’s ANDROID player API **server-side** so the browser can list caption tracks. Signed timedtext URLs usually allow CORS from `tools.silenvault.com`, so the page can download SRT/VTT/TXT client-side after that.
+**Not a user-facing step.** End users never log in, never grant permissions, and never configure this.
+
+This is optional **site-owner** infrastructure so YouTube caption downloads stay reliable after Google’s PO-token changes. When mounted at the same origin, the tool page discovers it silently via `/api/subtitles/health` — visitors only see normal same-site requests.
 
 ## Why this exists
 
-Browsers cannot call `https://www.youtube.com/youtubei/v1/player` from a third-party origin (CORS / 403).  
-WEB timedtext without a PO token often returns an empty `200`.  
-ANDROID player baseUrls work without PO tokens.
+- Browsers cannot call `youtubei/v1/player` from a third-party origin (CORS).
+- WEB timedtext often returns empty `200` without a PO token.
+- ANDROID player baseUrls still work without PO tokens when requested server-side.
 
 ## Routes
 
@@ -14,37 +16,31 @@ ANDROID player baseUrls work without PO tokens.
 |--------|------|-------------|
 | GET | `/health` | Health check |
 | GET | `/yt/tracks?v=VIDEO_ID` | List caption tracks (ANDROID) |
-| GET | `/fetch?url=` | GET relay for allowed hosts (timedtext, Vimeo, Dailymotion) |
+| GET | `/fetch?url=` | GET relay for allowed hosts |
 | OPTIONS | `*` | CORS preflight |
 
-## Local (dev)
+## Recommended production mount (invisible to users)
+
+Deploy this worker and attach a route:
+
+```text
+tools.silenvault.com/api/subtitles/*
+```
+
+The tool already probes **`${location.origin}/api/subtitles`** only. No `localStorage`, no third-party worker hostnames, no localhost on production.
+
+```bash
+cd workers/subtitle-proxy
+npx wrangler login    # site owner, once
+npx wrangler deploy
+# then add CF route → /api/subtitles/*
+```
+
+## Local development only
 
 ```bash
 node workers/subtitle-proxy/local-server.mjs
 # → http://127.0.0.1:8787
 ```
 
-The tool page probes this address automatically.
-
-## Cloudflare deploy
-
-```bash
-cd workers/subtitle-proxy
-npx wrangler login
-npx wrangler deploy
-```
-
-Default worker name: `sv-subtitle-proxy`  
-Public URL: `https://sv-subtitle-proxy.<your-subdomain>.workers.dev`
-
-Optional: point a route such as `tools.silenvault.com/api/subtitles/*` at the worker and set:
-
-```js
-localStorage.setItem('SV_SUB_PROXY', 'https://tools.silenvault.com/api/subtitles')
-```
-
-Or override any base:
-
-```js
-localStorage.setItem('SV_SUB_PROXY', 'https://sv-subtitle-proxy.YOUR_ACCOUNT.workers.dev')
-```
+The page only probes localhost when `location.hostname` is `localhost` / `127.0.0.1`.
