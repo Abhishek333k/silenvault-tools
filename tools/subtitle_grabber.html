@@ -282,30 +282,34 @@
 
             </div>
 
-            <aside class="w-full lg:w-80 flex flex-col gap-6 shrink-0">
-                <div class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center min-h-[300px]">
+            <aside class="w-full lg:w-80 min-w-0 flex flex-col gap-6 shrink-0">
+                <div class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center min-h-[300px] w-full overflow-hidden">
                     <span class="text-[10px] uppercase tracking-widest text-slate-600 mb-2 font-bold">Sponsored</span>
+                    <div class="w-full min-w-[250px]">
                     <ins class="adsbygoogle"
-                         style="display:block; width: 100%;"
+                         style="display:block; width: 100%; min-width: 250px;"
                          data-ad-client="ca-pub-5449371042798610"
                          data-ad-slot="7594122081"
                          data-ad-format="auto"
                          data-full-width-responsive="true"></ins>
+                    </div>
                     <script>
-                         (adsbygoogle = window.adsbygoogle || []).push({});
+                         try { (adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {}
                     </script>
                 </div>
 
-                <div class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center min-h-[600px] sticky top-24">
+                <div class="glass-panel p-4 rounded-2xl flex flex-col items-center justify-center min-h-[600px] sticky top-24 w-full overflow-hidden">
                     <span class="text-[10px] uppercase tracking-widest text-slate-600 mb-2 font-bold">Partner Content</span>
+                    <div class="w-full min-w-[250px] flex-1">
                     <ins class="adsbygoogle"
-                         style="display:block; width: 100%; height: 100%;"
+                         style="display:block; width: 100%; min-width: 250px; min-height: 250px;"
                          data-ad-client="ca-pub-5449371042798610"
                          data-ad-slot="9264203071"
                          data-ad-format="auto"
                          data-full-width-responsive="true"></ins>
+                    </div>
                     <script>
-                         (adsbygoogle = window.adsbygoogle || []).push({});
+                         try { (adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) {}
                     </script>
                 </div>
             </aside>
@@ -317,21 +321,37 @@
 
     <script>
         /* ============================================================
-           Subtitle Grabber — client-side multi-platform engine
-           YouTube: ANDROID innertube (no PO-token) + multi CORS proxy
-           Vimeo / Dailymotion: public metadata via CORS proxies
+           Subtitle Grabber — multi-platform engine
+           YouTube needs a tiny server proxy (ANDROID player is CORS-blocked
+           in browsers). Timedtext itself often allows CORS once signed.
+           Worker: workers/subtitle-proxy  |  local: :8787
            ============================================================ */
 
-        const YT_INNERTUBE_KEY = 'AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w';
-        const YT_ANDROID = { clientName: 'ANDROID', clientVersion: '20.10.38', androidSdkVersion: 30, hl: 'en', gl: 'US' };
+        /** Ordered subtitle API bases (first healthy wins). Override: localStorage.SV_SUB_PROXY */
+        const SUB_PROXY_CANDIDATES = [
+            () => localStorage.getItem('SV_SUB_PROXY'),
+            // After Cloudflare deploy + route (optional):
+            () => 'https://tools.silenvault.com/api/subtitles',
+            () => 'https://sv-subtitle-proxy.abhishek333k.workers.dev',
+            () => 'http://127.0.0.1:8787',
+            () => 'http://localhost:8787'
+        ];
 
-        /** Proxy cascade — try direct first (YouTube timedtext often reflects ACAO), then public CORS proxies. */
+        let resolvedSubProxy = null; // cached base URL once health-checked
+
+        /** GET relay cascade for Vimeo/DM/HTML and timedtext fallback. */
         const PROXY_LAYERS = [
             {
                 name: 'direct',
-                fetch: async (url, opts = {}) => {
-                    const r = await fetch(url, { ...opts, signal: opts.signal });
-                    return r;
+                fetch: async (url, opts = {}) => fetch(url, { ...opts, signal: opts.signal }),
+                parseText: async (r) => r.text()
+            },
+            {
+                name: 'sv-proxy',
+                fetch: async (url) => {
+                    const base = await getSubProxyBase();
+                    if (!base) throw new Error('no sv proxy');
+                    return fetch(`${base}/fetch?url=${encodeURIComponent(url)}`);
                 },
                 parseText: async (r) => r.text()
             },
@@ -358,10 +378,33 @@
             }
         ];
 
-        /** @type {{ platform: string, videoId: string, tracks: Array<{id:string,label:string,lang:string,kind:string,url:string,raw?:string,cues?:Array}> }} */
+        /** @type {{ platform: string, videoId: string, tracks: Array }} */
         let session = null;
         let currentFormat = 'srt';
         let loadingTrack = false;
+
+        async function getSubProxyBase() {
+            if (resolvedSubProxy) return resolvedSubProxy;
+            const bases = SUB_PROXY_CANDIDATES.map(fn => {
+                try { return fn(); } catch { return null; }
+            }).filter(Boolean);
+
+            for (const base of bases) {
+                try {
+                    const ctrl = new AbortController();
+                    const t = setTimeout(() => ctrl.abort(), 4000);
+                    const r = await fetch(`${base.replace(/\/$/, '')}/health`, { signal: ctrl.signal });
+                    clearTimeout(t);
+                    if (!r.ok) continue;
+                    const j = await r.json().catch(() => ({}));
+                    if (j.ok || j.service) {
+                        resolvedSubProxy = base.replace(/\/$/, '');
+                        return resolvedSubProxy;
+                    }
+                } catch (_) { /* try next */ }
+            }
+            return null;
+        }
 
         // ---------- UI helpers ----------
 
@@ -749,41 +792,23 @@
         }
 
         /**
-         * ANDROID innertube player — returns caption baseUrls that work WITHOUT
-         * the WEB client's PO-token (pot) requirement. May be blocked by CORS
-         * when Origin is a third-party site; proxies are tried as fallback.
+         * Preferred path: our subtitle proxy runs ANDROID innertube server-side
+         * (no browser CORS) and returns signed timedtext baseUrls.
          */
-        async function fetchYouTubeTracksAndroid(videoId) {
-            const endpoint = `https://www.youtube.com/youtubei/v1/player?key=${YT_INNERTUBE_KEY}&prettyPrint=false`;
-            const body = JSON.stringify({
-                context: { client: { ...YT_ANDROID } },
-                videoId,
-                contentCheckOk: true,
-                racyCheckOk: true
-            });
-
-            // text/plain avoids CORS preflight; YouTube still accepts JSON body.
-            // Note: browsers always send Origin; YT may 403 cross-origin.
-            try {
-                const res = await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-                    body
-                });
-                if (res.ok) {
-                    const data = await res.json();
-                    const tracks =
-                        data?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-                    if (tracks.length) {
-                        return mapYouTubeTracks(tracks.map(t => ({ ...t, _source: 'android' })));
-                    }
-                }
-            } catch (e) {
-                console.warn('ANDROID player direct failed', e);
-            }
-
-            // POST via GET-proxy is not available; HTML scrape is the fallback.
-            return null;
+        async function fetchYouTubeTracksViaProxy(videoId) {
+            const base = await getSubProxyBase();
+            if (!base) return null;
+            const res = await fetch(`${base}/yt/tracks?v=${encodeURIComponent(videoId)}`);
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `Subtitle proxy HTTP ${res.status}`);
+            const tracks = data.tracks || [];
+            if (!tracks.length) return null;
+            return tracks.map(t => ({
+                ...t,
+                raw: null,
+                cues: null,
+                source: t.source || 'android'
+            }));
         }
 
         async function fetchYouTubeTracksFromHtml(videoId) {
@@ -808,7 +833,7 @@
             throw lastErr || new Error('Could not load YouTube page');
         }
 
-        /** Invidious public instances (CORS-friendly when healthy). */
+        /** Invidious public instances (list often works; caption body may be empty in 2026). */
         const INVIDIOUS_HOSTS = [
             'https://inv.nadeko.net',
             'https://invidious.privacyredirect.com',
@@ -848,28 +873,33 @@
         }
 
         async function fetchYouTubeTracks(videoId) {
-            // 1) ANDROID innertube — signed timedtext without WEB PO-token
+            // 1) Subtitle proxy (ANDROID player) — required for reliable timedtext in browsers
             try {
-                const androidTracks = await fetchYouTubeTracksAndroid(videoId);
-                if (androidTracks?.length) return androidTracks;
+                const proxyTracks = await fetchYouTubeTracksViaProxy(videoId);
+                if (proxyTracks?.length) return proxyTracks;
             } catch (e) {
-                console.warn('ANDROID tracks failed', e);
+                console.warn('Subtitle proxy tracks failed:', e.message || e);
             }
 
-            // 2) Invidious (CORS * when instance is healthy)
+            // 2) Invidious (may list languages even when VTT body is empty)
             try {
                 const inv = await fetchYouTubeTracksInvidious(videoId);
                 if (inv?.length) return inv;
             } catch (e) {
-                console.warn('Invidious tracks failed', e);
+                console.warn('Invidious tracks failed:', e.message || e);
             }
 
-            // 3) Scrape watch HTML (WEB baseUrls often need pot → empty body; still useful for listing)
-            const htmlTracks = await fetchYouTubeTracksFromHtml(videoId);
-            if (!htmlTracks?.length) {
-                throw new Error('No subtitles found for this YouTube video. Captions may be disabled or unavailable.');
+            // 3) HTML scrape last (WEB baseUrls often return empty without PO token)
+            try {
+                const htmlTracks = await fetchYouTubeTracksFromHtml(videoId);
+                if (htmlTracks?.length) return htmlTracks;
+            } catch (e) {
+                console.warn('HTML scrape failed:', e.message || e);
             }
-            return htmlTracks;
+
+            throw new Error(
+                'Could not list YouTube captions. Start the subtitle proxy (see workers/subtitle-proxy) or try again later. Captions may also be disabled on this video.'
+            );
         }
 
         function parseCaptionPayload(text) {
@@ -896,85 +926,71 @@
         }
 
         async function loadYouTubeTrackContent(track) {
-            // Invidious returns VTT at the track URL
+            // Invidious returns VTT at the track URL (often empty in 2026 — fall through)
             if (track.source === 'invidious') {
-                const text = await proxyFetchText(track.url, { timeoutMs: 15000 });
-                const parsed = parseCaptionPayload(text);
-                track.raw = parsed.raw;
-                track.cues = parsed.cues;
-                if (!track.cues.length && track.raw) {
-                    // empty VTT from some instances — keep raw for download
-                    return track;
-                }
-                if (!track.cues.length) {
-                    throw new Error('Invidious returned an empty caption body for this track.');
-                }
-                return track;
+                try {
+                    const text = await proxyFetchText(track.url, { timeoutMs: 15000, acceptEmpty: true });
+                    const parsed = parseCaptionPayload(text);
+                    track.raw = parsed.raw;
+                    track.cues = parsed.cues;
+                    if (track.cues.length) return track;
+                } catch (_) { /* fall through to proxy refresh */ }
             }
 
-            const base = track.url;
+            const base = track.url || '';
             const candidates = [];
-            candidates.push(base);
-            if (!/[?&]fmt=json3/.test(base)) {
-                candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=json3');
-            }
-            if (!/[?&]fmt=srv3/.test(base)) {
-                candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=srv3');
+            if (base) {
+                candidates.push(base);
+                if (!/[?&]fmt=json3/.test(base)) {
+                    candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=json3');
+                }
+                if (!/[?&]fmt=srv3/.test(base)) {
+                    candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=srv3');
+                }
             }
 
             let lastErr = null;
             for (const url of candidates) {
                 try {
-                    // Direct first — YouTube timedtext often reflects Access-Control-Allow-Origin
+                    // Direct timedtext often has ACAO for tools.silenvault.com when signed (ANDROID)
                     const text = await proxyFetchText(url, { timeoutMs: 20000 });
                     const parsed = parseCaptionPayload(text);
                     track.raw = parsed.raw;
                     track.cues = parsed.cues;
                     if (track.cues.length) return track;
-                    lastErr = new Error('Empty caption payload (YouTube may require a PO token for this WEB track)');
+                    lastErr = new Error('Empty caption payload for this track URL');
                 } catch (e) {
                     lastErr = e;
                 }
             }
 
-            // Refresh via ANDROID player (usable signatures without pot)
-            if (track.source !== 'android' && session?.videoId) {
+            // Refresh track list/URLs via subtitle proxy (ANDROID), then re-fetch content
+            if (session?.videoId) {
                 try {
-                    const androidTracks = await fetchYouTubeTracksAndroid(session.videoId);
-                    const match = androidTracks?.find(t => t.lang === track.lang) || androidTracks?.[0];
+                    const proxyTracks = await fetchYouTubeTracksViaProxy(session.videoId);
+                    const match =
+                        proxyTracks?.find(t => t.lang === track.lang && t.kind === track.kind) ||
+                        proxyTracks?.find(t => t.lang === track.lang) ||
+                        proxyTracks?.[0];
                     if (match?.url) {
                         track.url = match.url;
                         track.source = 'android';
+                        track.label = match.label || track.label;
                         const text = await proxyFetchText(match.url, { timeoutMs: 20000 });
                         const parsed = parseCaptionPayload(text);
                         track.raw = parsed.raw;
                         track.cues = parsed.cues;
                         if (track.cues?.length) return track;
+                        lastErr = new Error('Proxy returned track but caption body was empty');
                     }
                 } catch (e) {
-                    console.warn('ANDROID refresh failed', e);
+                    lastErr = e;
                 }
             }
 
-            // Invidious content fallback by language label
-            if (session?.videoId) {
-                try {
-                    const inv = await fetchYouTubeTracksInvidious(session.videoId);
-                    const match = inv?.find(t => t.lang === track.lang) || inv?.[0];
-                    if (match) {
-                        const text = await proxyFetchText(match.url, { timeoutMs: 15000 });
-                        const parsed = parseCaptionPayload(text);
-                        track.raw = parsed.raw;
-                        track.cues = parsed.cues;
-                        track.source = 'invidious';
-                        if (track.cues?.length) return track;
-                    }
-                } catch (e) {
-                    console.warn('Invidious content fallback failed', e);
-                }
-            }
-
-            throw lastErr || new Error('Failed to load YouTube caption track. YouTube may be blocking unsigned timedtext requests from the browser.');
+            throw lastErr || new Error(
+                'Failed to load caption text. Ensure the subtitle proxy is running (workers/subtitle-proxy), then retry.'
+            );
         }
 
         async function fetchVimeoTracks(videoId) {
@@ -1218,11 +1234,14 @@
         async function ensureTrackLoaded(index) {
             if (!session || !session.tracks[index]) return;
             const track = session.tracks[index];
-            if (track.cues) return track;
+            // Only skip reload when we already have usable cues
+            if (Array.isArray(track.cues) && track.cues.length > 0) return track;
+            if (track._loadFailed && track._loadedOnce) return track;
 
             loadingTrack = true;
             document.getElementById('previewBox').textContent = 'Loading track content…';
             document.getElementById('downloadBtn').disabled = true;
+            updatePreview();
 
             try {
                 if (session.platform === 'youtube') {
@@ -1232,16 +1251,21 @@
                 } else if (session.platform === 'dailymotion') {
                     await loadDailymotionTrackContent(track);
                 }
+                track._loadedOnce = true;
+                track._loadFailed = !(track.cues && track.cues.length) && !track.raw;
                 if (!track.cues || !track.cues.length) {
                     if (!track.raw) throw new Error('Empty caption payload.');
-                    // Allow RAW download even if cue parse failed
                     track.cues = track.cues || [];
                 }
             } catch (e) {
                 console.error(e);
-                showError(e.message || 'Failed to load caption track.');
-                track.cues = [];
+                track._loadedOnce = true;
+                track._loadFailed = true;
+                track.cues = track.cues || [];
                 track.raw = track.raw || '';
+                showError(e.message || 'Failed to load caption track.');
+                document.getElementById('previewBox').textContent =
+                    `Preview unavailable.\n\n${e.message || 'Failed to load caption track.'}\n\nTip: run the subtitle proxy (workers/subtitle-proxy) for reliable YouTube captions.`;
             } finally {
                 loadingTrack = false;
                 document.getElementById('downloadBtn').disabled = false;
@@ -1279,15 +1303,19 @@
                 box.textContent = '';
                 return;
             }
-            if (loadingTrack && !track.cues) {
+            if (loadingTrack) {
                 box.textContent = 'Loading track content…';
                 return;
             }
             const content = formatContent(track, currentFormat);
-            if (!content && currentFormat !== 'raw') {
+            if (!content) {
+                if (currentFormat === 'raw' && !track.raw) {
+                    box.textContent = '(No RAW payload for this track yet.)';
+                    return;
+                }
                 box.textContent = track.raw
-                    ? '(Could not parse timed cues — try RAW format or another track.)'
-                    : '(No caption text for this track.)';
+                    ? '(Could not parse timed cues — try RAW format or another language.)'
+                    : '(No caption text for this track. Try another language or ensure the subtitle proxy is online.)';
                 return;
             }
             // Cap preview length for performance

@@ -1,0 +1,8 @@
+name = "sv-subtitle-proxy"
+main = "worker.js"
+compatibility_date = "2026-03-01"
+
+# After: npx wrangler login
+# Deploy:  npx wrangler deploy
+# Optional custom route (CF dashboard or routes below):
+# routes = [{ pattern = "tools.silenvault.com/api/subtitles/*", zone_name = "silenvault.com" }]
