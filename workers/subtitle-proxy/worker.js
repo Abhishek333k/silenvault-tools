@@ -1,15 +1,15 @@
 /**
- * SilenVault Subtitle Proxy — Cloudflare Worker
+ * SilenVault Subtitle Proxy — Cloudflare Worker (site infrastructure)
  *
- * Why: YouTube's ANDROID innertube player returns caption baseUrls that work
- * without WEB PO-tokens, but the browser cannot call youtubei (CORS/403).
- * Timedtext itself often allows CORS once you have a signed baseUrl.
+ * Mount at: tools.silenvault.com/api/subtitles/*
+ * Visitors never configure this — the tool page talks same-origin only.
  *
  * Routes:
- *   GET  /health
- *   GET  /yt/tracks?v=VIDEO_ID
- *   GET  /fetch?url=ENCODED_URL   (generic GET relay for VTT/XML/config)
- *   OPTIONS *                    (CORS preflight)
+ *   GET /health
+ *   GET /yt/tracks?v=VIDEO_ID
+ *   GET /yt/caption?v=VIDEO_ID&lang=xx&kind=asr|manual&fmt=json|srt|vtt|txt|raw
+ *   GET /fetch?url=ENCODED_URL
+ *   OPTIONS *
  */
 
 const YT_KEY = 'AIzaSyA8eiZmM1FaDVjRy-df2KTyQ_vz_yYM39w';
@@ -35,10 +35,10 @@ function corsHeaders(request) {
   const allow = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
     'Access-Control-Allow-Origin': allow,
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Accept',
     'Access-Control-Max-Age': '86400',
-    'Vary': 'Origin',
+    Vary: 'Origin',
   };
 }
 
@@ -48,7 +48,7 @@ function json(request, data, status = 200) {
     headers: {
       ...corsHeaders(request),
       'Content-Type': 'application/json; charset=utf-8',
-      'Cache-Control': 'public, max-age=60',
+      'Cache-Control': 'public, max-age=120',
     },
   });
 }
@@ -59,9 +59,99 @@ function text(request, body, status = 200, type = 'text/plain; charset=utf-8') {
     headers: {
       ...corsHeaders(request),
       'Content-Type': type,
-      'Cache-Control': 'public, max-age=60',
+      'Cache-Control': 'public, max-age=120',
     },
   });
+}
+
+function pad(n, w = 2) {
+  return String(n).padStart(w, '0');
+}
+
+function msToSrtTime(ms) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  const milli = Math.floor(ms % 1000);
+  return `${pad(h)}:${pad(m)}:${pad(s)},${pad(milli, 3)}`;
+}
+
+function msToVttTime(ms) {
+  return msToSrtTime(ms).replace(',', '.');
+}
+
+function cuesToSrt(cues) {
+  return cues
+    .map((c, i) => `${i + 1}\n${msToSrtTime(c.startMs)} --> ${msToSrtTime(c.endMs)}\n${c.text}\n`)
+    .join('\n');
+}
+
+function cuesToVtt(cues) {
+  return `WEBVTT\n\n${cues.map((c) => `${msToVttTime(c.startMs)} --> ${msToVttTime(c.endMs)}\n${c.text}`).join('\n\n')}\n`;
+}
+
+function cuesToTxt(cues) {
+  return cues.map((c) => c.text).filter(Boolean).join('\n');
+}
+
+function decodeEntities(str) {
+  return String(str || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n));
+}
+
+function cleanText(raw) {
+  return decodeEntities(
+    String(raw || '')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/?[^>]+>/g, '')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  );
+}
+
+function parseSrv3OrXml(xml) {
+  const cues = [];
+  // <p t="ms" d="ms">text</p>
+  const pRe = /<p\b([^>]*)>([\s\S]*?)<\/p>/gi;
+  let m;
+  while ((m = pRe.exec(xml))) {
+    const attrs = m[1];
+    const t = +(attrs.match(/\bt="(\d+)"/) || [])[1] || 0;
+    const d = +(attrs.match(/\bd="(\d+)"/) || [])[1] || 2000;
+    const text = cleanText(m[2]);
+    if (text) cues.push({ startMs: t, endMs: t + d, text });
+  }
+  if (cues.length) return cues;
+  // <text start="1.2" dur="2.3">
+  const tRe = /<text\b([^>]*)>([\s\S]*?)<\/text>/gi;
+  while ((m = tRe.exec(xml))) {
+    const attrs = m[1];
+    const start = parseFloat((attrs.match(/\bstart="([^"]+)"/) || [])[1] || '0') * 1000;
+    const dur = parseFloat((attrs.match(/\bdur="([^"]+)"/) || [])[1] || '2') * 1000;
+    const text = cleanText(m[2]);
+    if (text) cues.push({ startMs: Math.round(start), endMs: Math.round(start + dur), text });
+  }
+  return cues;
+}
+
+function parseJson3(json) {
+  const events = json.events || [];
+  const cues = [];
+  for (const ev of events) {
+    if (!ev.segs || ev.tStartMs == null) continue;
+    const text = cleanText(ev.segs.map((s) => s.utf8 || '').join(''));
+    if (!text) continue;
+    const startMs = ev.tStartMs;
+    const endMs = startMs + (ev.dDurationMs || 2000);
+    cues.push({ startMs, endMs, text });
+  }
+  return cues;
 }
 
 async function fetchYouTubeTracks(videoId) {
@@ -82,13 +172,11 @@ async function fetchYouTubeTracks(videoId) {
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`YouTube player ${res.status}: ${errText.slice(0, 200)}`);
+    throw new Error(`YouTube player ${res.status}: ${errText.slice(0, 160)}`);
   }
 
   const data = await res.json();
-  const tracks =
-    data?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
-
+  const tracks = data?.captions?.playerCaptionsTracklistRenderer?.captionTracks || [];
   if (!tracks.length) {
     const status = data?.playabilityStatus?.status || 'UNKNOWN';
     const reason = data?.playabilityStatus?.reason || 'No caption tracks';
@@ -113,6 +201,42 @@ async function fetchYouTubeTracks(videoId) {
       source: 'android',
     };
   });
+}
+
+async function fetchTimedtext(url) {
+  const attempts = [
+    url,
+    url.replace(/[?&]fmt=[^&]*/g, '') + (url.includes('?') ? '&' : '?') + 'fmt=json3',
+    url.replace(/[?&]fmt=[^&]*/g, '') + (url.includes('?') ? '&' : '?') + 'fmt=srv3',
+  ];
+  let last = '';
+  for (const u of attempts) {
+    const res = await fetch(u, {
+      headers: {
+        'User-Agent': 'com.google.android.youtube/20.10.38 (Linux; U; Android 14) gzip',
+        Accept: '*/*',
+      },
+    });
+    const body = await res.text();
+    last = body;
+    if (res.status === 429) throw new Error('YouTube rate-limited caption download. Try again shortly.');
+    if (!body || body.length < 20) continue;
+    if (body.includes('<html') && body.length < 5000) continue;
+    return body;
+  }
+  throw new Error('Empty caption payload from YouTube');
+}
+
+function parseCaptionBody(body) {
+  const trimmed = body.trim();
+  if (trimmed.startsWith('{')) {
+    try {
+      const cues = parseJson3(JSON.parse(trimmed));
+      if (cues.length) return { cues, raw: body };
+    } catch (_) {}
+  }
+  const cues = parseSrv3OrXml(body);
+  return { cues, raw: body };
 }
 
 function isAllowedFetchTarget(urlStr) {
@@ -145,14 +269,16 @@ export default {
     }
 
     const url = new URL(request.url);
-    const path = url.pathname.replace(/\/+$/, '') || '/';
+    // Support both / and /api/subtitles prefix when routed
+    let path = url.pathname.replace(/\/+$/, '') || '/';
+    path = path.replace(/^\/api\/subtitles/, '') || '/';
 
     try {
       if (path === '/health' || path === '/') {
         return json(request, {
           ok: true,
           service: 'silenvault-subtitle-proxy',
-          routes: ['/health', '/yt/tracks?v=', '/fetch?url='],
+          routes: ['/health', '/yt/tracks?v=', '/yt/caption?v=&lang=', '/fetch?url='],
         });
       }
 
@@ -163,6 +289,45 @@ export default {
         }
         const tracks = await fetchYouTubeTracks(videoId);
         return json(request, { videoId, tracks, count: tracks.length });
+      }
+
+      if (path === '/yt/caption') {
+        const videoId = (url.searchParams.get('v') || url.searchParams.get('id') || '').trim();
+        const lang = (url.searchParams.get('lang') || 'en').trim();
+        const kind = (url.searchParams.get('kind') || '').trim(); // asr | manual | ''
+        const fmt = (url.searchParams.get('fmt') || 'json').trim().toLowerCase();
+        if (!/^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+          return json(request, { error: 'Invalid or missing video id (v)' }, 400);
+        }
+
+        const tracks = await fetchYouTubeTracks(videoId);
+        const match =
+          tracks.find((t) => t.lang === lang && (!kind || t.kind === kind)) ||
+          tracks.find((t) => t.lang === lang) ||
+          tracks.find((t) => t.lang.startsWith(lang)) ||
+          tracks[0];
+        if (!match) return json(request, { error: 'No matching caption track' }, 404);
+
+        const raw = await fetchTimedtext(match.url);
+        const { cues } = parseCaptionBody(raw);
+        if (!cues.length && !raw) {
+          return json(request, { error: 'Caption body empty' }, 502);
+        }
+
+        if (fmt === 'srt') return text(request, cuesToSrt(cues), 200, 'application/x-subrip; charset=utf-8');
+        if (fmt === 'vtt') return text(request, cuesToVtt(cues), 200, 'text/vtt; charset=utf-8');
+        if (fmt === 'txt') return text(request, cuesToTxt(cues), 200, 'text/plain; charset=utf-8');
+        if (fmt === 'raw') return text(request, raw, 200, 'text/plain; charset=utf-8');
+
+        return json(request, {
+          videoId,
+          track: { label: match.label, lang: match.lang, kind: match.kind },
+          cues,
+          raw,
+          srt: cuesToSrt(cues),
+          vtt: cuesToVtt(cues),
+          txt: cuesToTxt(cues),
+        });
       }
 
       if (path === '/fetch') {

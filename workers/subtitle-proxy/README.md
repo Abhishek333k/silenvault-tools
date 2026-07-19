@@ -21,20 +21,25 @@ This is optional **site-owner** infrastructure so YouTube caption downloads stay
 
 ## Recommended production mount (invisible to users)
 
-Deploy this worker and attach a route:
+1. Deploy worker + attach Cloudflare route:
 
 ```text
 tools.silenvault.com/api/subtitles/*
 ```
 
-The tool already probes **`${location.origin}/api/subtitles`** only. No `localStorage`, no third-party worker hostnames, no localhost on production.
-
 ```bash
 cd workers/subtitle-proxy
-npx wrangler login    # site owner, once
+npx wrangler login    # site owner only, once
 npx wrangler deploy
-# then add CF route → /api/subtitles/*
 ```
+
+2. Enable the tool page helper with one meta tag in `tools/subtitle_grabber.html` `<head>`:
+
+```html
+<meta name="sv-subtitle-api" content="/api/subtitles">
+```
+
+Until that meta exists, the page never requests `/api/subtitles` (no 404 noise).
 
 ## Local development only
 
@@ -43,4 +48,4 @@ node workers/subtitle-proxy/local-server.mjs
 # → http://127.0.0.1:8787
 ```
 
-The page only probes localhost when `location.hostname` is `localhost` / `127.0.0.1`.
+On `localhost` / `127.0.0.1` the page auto-probes `:8787` (no meta required).

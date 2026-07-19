@@ -321,71 +321,54 @@
 
     <script>
         /* ============================================================
-           Subtitle Grabber — zero-friction client engine
-           - No permission prompts on Fetch
-           - No localhost / third-party worker probes in production
-           - Same public GET relays as yt_thumbnail (allorigins / codetabs)
-           - Optional silent same-origin helper: /api/subtitles (site infra only)
+           Subtitle Grabber — quiet client engine
+           - No permission prompts, no login, no user setup
+           - Prefer CORS-friendly direct APIs (Invidious)
+           - Prefer same-origin /api/subtitles when site infra is live
+           - Avoid flaky public CORS proxies (they spam console when down)
            ============================================================ */
 
         const IS_LOCAL_HOST = /^(localhost|127\.0\.0\.1)$/i.test(location.hostname);
-
-        /** GET relays only — no browser POST to YouTube (avoids CORS noise). */
-        const PROXY_LAYERS = [
-            {
-                name: 'direct',
-                fetch: async (url, opts = {}) => fetch(url, { ...opts, signal: opts.signal }),
-                parseText: async (r) => r.text()
-            },
-            {
-                name: 'allorigins-get',
-                fetch: async (url) => fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`),
-                parseText: async (r) => {
-                    const j = await r.json();
-                    if (j.status && j.status.http_code && j.status.http_code >= 400) {
-                        throw new Error(`Upstream ${j.status.http_code}`);
-                    }
-                    return j.contents || '';
-                }
-            },
-            {
-                name: 'allorigins-raw',
-                fetch: async (url) => fetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`),
-                parseText: async (r) => r.text()
-            },
-            {
-                name: 'codetabs',
-                fetch: async (url) => fetch(`https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`),
-                parseText: async (r) => r.text()
-            }
-        ];
 
         /** @type {{ platform: string, videoId: string, tracks: Array }} */
         let session = null;
         let currentFormat = 'srt';
         let loadingTrack = false;
-        let resolvedSiteHelper = null; // null = unknown, false = missing, string = base
+        // null unknown | false unavailable | string base URL
+        let resolvedSiteHelper = null;
 
         /**
-         * Silent same-origin helper only (never probes random hosts / localhost in prod).
-         * Site owner may mount workers/subtitle-proxy at /api/subtitles — visitors never configure it.
+         * Discover same-origin caption helper without a separate /health probe
+         * on every page load. First YouTube fetch tries once; 404 disables it.
+         * Localhost also tries :8787 for dev only.
          */
         async function getSiteHelperBase() {
             if (resolvedSiteHelper === false) return null;
             if (typeof resolvedSiteHelper === 'string') return resolvedSiteHelper;
 
+            // Site owner enables helper by adding:
+            //   <meta name="sv-subtitle-api" content="/api/subtitles">
+            // until then we never probe (avoids /api/subtitles/health 404 noise).
+            const meta = document.querySelector('meta[name="sv-subtitle-api"]');
             const candidates = [];
-            // Same-origin first — looks like normal site traffic
-            candidates.push(`${location.origin}/api/subtitles`);
-            // Local dev only (Live Server + local-server.mjs) — never on production hostnames
+            if (meta && meta.content) {
+                const c = meta.content.trim();
+                candidates.push(c.startsWith('http') ? c : `${location.origin}${c.startsWith('/') ? '' : '/'}${c}`);
+            }
             if (IS_LOCAL_HOST) {
+                // Dev only — local-server.mjs
                 candidates.push('http://127.0.0.1:8787', 'http://localhost:8787');
+            }
+            if (!candidates.length) {
+                resolvedSiteHelper = false;
+                return null;
             }
 
             for (const base of candidates) {
                 try {
                     const ctrl = new AbortController();
-                    const t = setTimeout(() => ctrl.abort(), 2500);
+                    const t = setTimeout(() => ctrl.abort(), 2000);
+                    // Use tracks endpoint with a dummy short-circuit via health only if available
                     const r = await fetch(`${base.replace(/\/$/, '')}/health`, {
                         signal: ctrl.signal,
                         credentials: 'omit'
@@ -401,6 +384,47 @@
             }
             resolvedSiteHelper = false;
             return null;
+        }
+
+        /** Direct fetch only (no public CORS proxy fan-out). */
+        async function directText(url, timeoutMs = 15000) {
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                const res = await fetch(url, {
+                    signal: ctrl.signal,
+                    credentials: 'omit',
+                    headers: { Accept: '*/*' }
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return await res.text();
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
+        /**
+         * Optional single public relay for Vimeo/DM when direct CORS fails.
+         * One attempt only — avoids multi-proxy console spam.
+         */
+        async function singleRelayText(url, timeoutMs = 20000) {
+            try {
+                return await directText(url, timeoutMs);
+            } catch (_) { /* try relay */ }
+            const relay = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+            try {
+                const res = await fetch(relay, { signal: ctrl.signal, credentials: 'omit' });
+                if (!res.ok) throw new Error(`relay ${res.status}`);
+                const text = await res.text();
+                if (!text || /error-52\d|<!DOCTYPE html>/i.test(text.slice(0, 200))) {
+                    throw new Error('relay empty');
+                }
+                return text;
+            } finally {
+                clearTimeout(timer);
+            }
         }
 
         // ---------- UI helpers ----------
@@ -513,55 +537,29 @@
             return m ? m[1] : null;
         }
 
-        // ---------- CORS / multi-proxy fetch ----------
+        // ---------- Fetch helpers ----------
 
         function isGarbagePayload(text) {
             if (text == null) return true;
             const t = String(text).trim();
             if (!t) return true;
-            if (t.length < 20 && !t.includes('{') && !t.includes('<')) return true;
+            if (t.length < 20 && !t.includes('{') && !t.includes('<') && !t.includes('WEBVTT')) return true;
             if (/error-522|error-520|Cloudflare/i.test(t) && t.includes('<!DOCTYPE')) return true;
             if (/^Oops\.\.\. Request Timeout/i.test(t)) return true;
             return false;
         }
 
-        /**
-         * Fetch text through direct + proxy cascade.
-         * @param {string} targetUrl
-         * @param {{ acceptEmpty?: boolean, timeoutMs?: number, preferProxy?: boolean }} [options]
-         */
+        /** @deprecated name kept for call sites — quiet direct/relay helper */
         async function proxyFetchText(targetUrl, options = {}) {
-            const { acceptEmpty = false, timeoutMs = 25000, preferProxy = false } = options;
-            const layers = preferProxy
-                ? PROXY_LAYERS.filter(l => l.name !== 'direct').concat(PROXY_LAYERS.filter(l => l.name === 'direct'))
-                : PROXY_LAYERS;
-            const errors = [];
-
-            for (const layer of layers) {
-                const ctrl = new AbortController();
-                const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-                try {
-                    const res = await layer.fetch(targetUrl, { signal: ctrl.signal });
-                    if (!res.ok && layer.name === 'direct') {
-                        errors.push(`${layer.name}:${res.status}`);
-                        continue;
-                    }
-                    let text = await layer.parseText(res);
-                    // allorigins-get may double-encode
-                    if (typeof text !== 'string') text = String(text ?? '');
-                    if (!acceptEmpty && isGarbagePayload(text)) {
-                        errors.push(`${layer.name}:empty/garbage`);
-                        continue;
-                    }
-                    clearTimeout(timer);
-                    return text;
-                } catch (e) {
-                    errors.push(`${layer.name}:${e.message || e}`);
-                } finally {
-                    clearTimeout(timer);
-                }
+            const { acceptEmpty = false, timeoutMs = 20000, preferProxy = false } = options;
+            if (preferProxy) {
+                const text = await singleRelayText(targetUrl, timeoutMs);
+                if (!acceptEmpty && isGarbagePayload(text)) throw new Error('Empty response');
+                return text;
             }
-            throw new Error(`All fetch paths failed for resource. (${errors.slice(0, 4).join('; ')})`);
+            const text = await directText(targetUrl, timeoutMs);
+            if (!acceptEmpty && isGarbagePayload(text)) throw new Error('Empty response');
+            return text;
         }
 
         // ---------- Format converters ----------
@@ -836,11 +834,15 @@
             return out;
         }
 
-        /** Silent same-origin ANDROID helper — only if site mounts /api/subtitles. */
+        /** Same-origin helper — tracks list. */
         async function fetchYouTubeTracksViaSiteHelper(videoId) {
             const base = await getSiteHelperBase();
             if (!base) return null;
             const res = await fetch(`${base}/yt/tracks?v=${encodeURIComponent(videoId)}`, { credentials: 'omit' });
+            if (res.status === 404) {
+                resolvedSiteHelper = false;
+                return null;
+            }
             const data = await res.json().catch(() => ({}));
             if (!res.ok) return null;
             const tracks = data.tracks || [];
@@ -850,58 +852,38 @@
                 url: absYouTubeUrl(t.url),
                 raw: null,
                 cues: null,
-                source: t.source || 'android'
+                source: 'android'
             }));
         }
 
-        /** pbj=1 is a GET watch payload that includes captionTracks (no browser POST). */
-        async function fetchYouTubeTracksFromPbj(videoId) {
-            const urls = [
-                `https://www.youtube.com/watch?v=${videoId}&pbj=1`,
-                `https://m.youtube.com/watch?v=${videoId}&pbj=1`
-            ];
-            for (const watchUrl of urls) {
-                try {
-                    const text = await proxyFetchText(watchUrl, { preferProxy: true, timeoutMs: 30000 });
-                    const cleaned = stripXssi(text);
-                    // pbj may be a JSON array or object
-                    let data;
-                    try {
-                        data = JSON.parse(cleaned);
-                    } catch {
-                        // sometimes wrapped
-                        const m = cleaned.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
-                        if (!m) continue;
-                        data = JSON.parse(m[1]);
-                    }
-                    const tracksRaw = findCaptionTracksDeep(data);
-                    if (tracksRaw.length) {
-                        return mapYouTubeTracks(tracksRaw, 'pbj');
-                    }
-                } catch (_) { /* silent next */ }
+        /** Same-origin helper — full caption payload (cues + formats). */
+        async function loadYouTubeCaptionViaSiteHelper(videoId, track) {
+            const base = await getSiteHelperBase();
+            if (!base) return null;
+            const qs = new URLSearchParams({
+                v: videoId,
+                lang: track.lang || 'en',
+                kind: track.kind === 'asr' ? 'asr' : 'manual',
+                fmt: 'json'
+            });
+            const res = await fetch(`${base}/yt/caption?${qs}`, { credentials: 'omit' });
+            if (res.status === 404) {
+                resolvedSiteHelper = false;
+                return null;
+            }
+            const data = await res.json().catch(() => null);
+            if (!res.ok || !data) return null;
+            if (Array.isArray(data.cues) && data.cues.length) {
+                track.cues = data.cues;
+                track.raw = data.raw || data.srt || '';
+                track.source = 'android';
+                if (data.track?.label) track.label = data.track.label;
+                return track;
             }
             return null;
         }
 
-        async function fetchYouTubeTracksFromHtml(videoId) {
-            const watchUrls = [
-                `https://www.youtube.com/watch?v=${videoId}`,
-                `https://m.youtube.com/watch?v=${videoId}`,
-                `https://www.youtube.com/watch?v=${videoId}&hl=en&gl=US`
-            ];
-            for (const watchUrl of watchUrls) {
-                try {
-                    const html = await proxyFetchText(watchUrl, { preferProxy: true, timeoutMs: 30000 });
-                    const tracksRaw = extractCaptionTracksArray(html);
-                    if (tracksRaw?.length) {
-                        return mapYouTubeTracks(tracksRaw, 'html');
-                    }
-                } catch (_) { /* silent */ }
-            }
-            return null;
-        }
-
-        /** Public Invidious instances — CORS-friendly, silent failures. */
+        /** Invidious instances that expose CORS * for caption list (content may still be empty). */
         const INVIDIOUS_HOSTS = [
             'https://inv.nadeko.net',
             'https://invidious.privacyredirect.com',
@@ -912,60 +894,51 @@
         async function fetchYouTubeTracksInvidious(videoId) {
             for (const host of INVIDIOUS_HOSTS) {
                 try {
-                    const ctrl = new AbortController();
-                    const timer = setTimeout(() => ctrl.abort(), 6000);
-                    const res = await fetch(`${host}/api/v1/captions/${videoId}`, {
-                        signal: ctrl.signal,
-                        headers: { Accept: 'application/json' },
-                        credentials: 'omit'
-                    });
-                    clearTimeout(timer);
-                    if (!res.ok) continue;
-                    const data = await res.json();
+                    const text = await directText(`${host}/api/v1/captions/${videoId}`, 7000);
+                    const data = JSON.parse(text);
                     const caps = data.captions || [];
                     if (!caps.length) continue;
-                    return caps.map((c, idx) => ({
-                        id: `inv-${idx}-${c.languageCode || 'und'}`,
-                        label: c.label || c.languageCode || `Track ${idx + 1}`,
-                        lang: c.languageCode || 'und',
-                        kind: /auto/i.test(c.label || '') ? 'asr' : 'manual',
-                        url: (c.url && c.url.startsWith('http')) ? c.url : `${host}${c.url}`,
-                        raw: null,
-                        cues: null,
-                        source: 'invidious'
-                    }));
-                } catch (_) { /* silent */ }
+                    return caps.map((c, idx) => {
+                        // Prefer lang query — avoids double-encoding label issues
+                        const lang = c.languageCode || 'und';
+                        const isAsr = /auto/i.test(c.label || '');
+                        const url = `${host}/api/v1/captions/${videoId}?lang=${encodeURIComponent(lang)}${isAsr ? '' : ''}`;
+                        // Keep label URL as secondary
+                        const labelUrl = c.url?.startsWith('http')
+                            ? c.url
+                            : `${host}/api/v1/captions/${videoId}?label=${encodeURIComponent(c.label || lang)}`;
+                        return {
+                            id: `inv-${idx}-${lang}`,
+                            label: c.label || lang,
+                            lang,
+                            kind: isAsr ? 'asr' : 'manual',
+                            url: labelUrl,
+                            altUrls: [url, labelUrl],
+                            raw: null,
+                            cues: null,
+                            source: 'invidious'
+                        };
+                    });
+                } catch (_) { /* silent next host */ }
             }
             return null;
         }
 
         async function fetchYouTubeTracks(videoId) {
-            // 1) Optional silent same-origin helper (best quality; invisible to users)
+            // 1) Same-origin site helper (best; zero third-party console noise)
             try {
                 const helperTracks = await fetchYouTubeTracksViaSiteHelper(videoId);
                 if (helperTracks?.length) return helperTracks;
             } catch (_) { /* silent */ }
 
-            // 2) pbj=1 via public GET relays (same pattern as other SilenVault tools)
-            try {
-                const pbjTracks = await fetchYouTubeTracksFromPbj(videoId);
-                if (pbjTracks?.length) return pbjTracks;
-            } catch (_) { /* silent */ }
-
-            // 3) Invidious
+            // 2) Invidious direct (CORS *) — list languages without YouTube/proxy noise
             try {
                 const inv = await fetchYouTubeTracksInvidious(videoId);
                 if (inv?.length) return inv;
             } catch (_) { /* silent */ }
 
-            // 4) Watch HTML scrape
-            try {
-                const htmlTracks = await fetchYouTubeTracksFromHtml(videoId);
-                if (htmlTracks?.length) return htmlTracks;
-            } catch (_) { /* silent */ }
-
             throw new Error(
-                'No public captions found for this video. It may have captions disabled, be private/region-locked, or temporarily unreachable.'
+                'No public captions found for this video. Captions may be disabled, private/region-locked, or temporarily unavailable.'
             );
         }
 
@@ -993,67 +966,44 @@
         }
 
         async function loadYouTubeTrackContent(track) {
-            // Invidious returns VTT at the track URL (often empty in 2026 — fall through)
-            if (track.source === 'invidious') {
-                try {
-                    const text = await proxyFetchText(track.url, { timeoutMs: 15000, acceptEmpty: true });
-                    const parsed = parseCaptionPayload(text);
-                    track.raw = parsed.raw;
-                    track.cues = parsed.cues;
-                    if (track.cues.length) return track;
-                } catch (_) { /* fall through to proxy refresh */ }
-            }
-
-            const base = track.url || '';
-            const candidates = [];
-            if (base) {
-                candidates.push(base);
-                if (!/[?&]fmt=json3/.test(base)) {
-                    candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=json3');
-                }
-                if (!/[?&]fmt=srv3/.test(base)) {
-                    candidates.push(base.replace(/[?&]fmt=[^&]*/g, '') + (base.includes('?') ? '&' : '?') + 'fmt=srv3');
-                }
-            }
-
-            let lastErr = null;
-            for (const url of candidates) {
-                try {
-                    // Direct timedtext often has ACAO for tools.silenvault.com when signed (ANDROID)
-                    const text = await proxyFetchText(url, { timeoutMs: 20000 });
-                    const parsed = parseCaptionPayload(text);
-                    track.raw = parsed.raw;
-                    track.cues = parsed.cues;
-                    if (track.cues.length) return track;
-                    lastErr = new Error('Empty caption payload for this track URL');
-                } catch (e) {
-                    lastErr = e;
-                }
-            }
-
-            // Optional same-origin helper refresh (ANDROID-signed URLs) — silent if absent
+            // 1) Same-origin helper returns full cues in one request (preferred)
             if (session?.videoId) {
                 try {
-                    const helperTracks = await fetchYouTubeTracksViaSiteHelper(session.videoId);
-                    const match =
-                        helperTracks?.find(t => t.lang === track.lang && t.kind === track.kind) ||
-                        helperTracks?.find(t => t.lang === track.lang) ||
-                        helperTracks?.[0];
-                    if (match?.url) {
-                        track.url = match.url;
-                        track.source = 'android';
-                        track.label = match.label || track.label;
-                        const text = await proxyFetchText(match.url, { timeoutMs: 20000 });
-                        const parsed = parseCaptionPayload(text);
-                        track.raw = parsed.raw;
-                        track.cues = parsed.cues;
-                        if (track.cues?.length) return track;
-                    }
+                    const loaded = await loadYouTubeCaptionViaSiteHelper(session.videoId, track);
+                    if (loaded?.cues?.length) return loaded;
                 } catch (_) { /* silent */ }
             }
 
-            throw lastErr || new Error(
-                'Caption text could not be loaded for this language. Try another language, or a different public video.'
+            // 2) Invidious direct only (already CORS *) — never wrap in third-party proxies
+            if (track.source === 'invidious') {
+                const urls = Array.isArray(track.altUrls) && track.altUrls.length
+                    ? track.altUrls
+                    : [track.url];
+                for (const u of urls) {
+                    try {
+                        const text = await directText(u, 12000);
+                        if (isGarbagePayload(text)) continue;
+                        const parsed = parseCaptionPayload(text);
+                        track.raw = parsed.raw;
+                        track.cues = parsed.cues;
+                        if (track.cues.length) return track;
+                    } catch (_) { /* try next URL */ }
+                }
+            }
+
+            // 3) ANDROID-signed URL direct (only when helper already gave us the URL)
+            if (track.source === 'android' && track.url) {
+                try {
+                    const text = await directText(track.url, 15000);
+                    const parsed = parseCaptionPayload(text);
+                    track.raw = parsed.raw;
+                    track.cues = parsed.cues;
+                    if (track.cues.length) return track;
+                } catch (_) { /* fall through */ }
+            }
+
+            throw new Error(
+                'Caption text could not be loaded for this language. Try another language or a different public video.'
             );
         }
 
@@ -1247,7 +1197,6 @@
                 await ensureTrackLoaded(0);
                 updatePreview();
             } catch (err) {
-                console.error(err);
                 setLoading(false);
                 showError(err.message || 'Could not fetch subtitles right now. Try again in a moment.');
             }
@@ -1322,7 +1271,6 @@
                     track.cues = track.cues || [];
                 }
             } catch (e) {
-                console.error(e);
                 track._loadedOnce = true;
                 track._loadFailed = true;
                 track.cues = track.cues || [];
